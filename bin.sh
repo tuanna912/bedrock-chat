@@ -48,7 +48,7 @@ ALLOWED_SIGN_UP_EMAIL_DOMAINS=""
 BEDROCK_REGION="us-east-1"
 CDK_JSON_OVERRIDE="{}"
 REPO_URL="https://github.com/tuanna912/bedrock-chat.git"
-VERSION="v3"
+VERSION="develop"
 
 # Parse command-line arguments for customization
 while [[ "$#" -gt 0 ]]; do
