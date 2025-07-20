@@ -114,6 +114,9 @@ def create_new_bot(user: User, bot_input: BotInput) -> BotOutput:
     """Create a new bot.
     Bot is created as private.
     """
+    logger.info(f"Creating new bot for user {user.id} with title: {bot_input.title}")
+    logger.info(f"Bot has knowledge: {bot_input.has_knowledge()}")
+    logger.info(f"Bot has guardrails: {bot_input.has_guardrails()}")
 
     # Create initial knowledge
     source_urls = []
@@ -125,6 +128,8 @@ def create_new_bot(user: User, bot_input: BotInput) -> BotOutput:
         sitemap_urls = bot_input.knowledge.sitemap_urls
         s3_urls = bot_input.knowledge.s3_urls
 
+        logger.info(f"Processing knowledge: {len(source_urls)} source URLs, {len(sitemap_urls)} sitemap URLs, {len(bot_input.knowledge.filenames)} files, {len(s3_urls)} S3 URLs")
+
         # Commit changes to S3
         _update_s3_documents_by_diff(
             user.id, bot_input.id, bot_input.knowledge.filenames, []
@@ -134,6 +139,7 @@ def create_new_bot(user: User, bot_input: BotInput) -> BotOutput:
             DOCUMENT_BUCKET, compose_upload_temp_s3_prefix(user.id, bot_input.id)
         )
         filenames = bot_input.knowledge.filenames
+        logger.info(f"Successfully processed {len(filenames)} knowledge files")
 
     knowledge = KnowledgeModel(
         source_urls=source_urls,
@@ -143,7 +149,21 @@ def create_new_bot(user: User, bot_input: BotInput) -> BotOutput:
     )
 
     new_bot = BotModel.from_input(bot_input, owner_user_id=user.id, knowledge=knowledge)
-    store_bot(new_bot)
+    logger.info(f"Created bot model with sync_status: {new_bot.sync_status}")
+    
+    try:
+        store_bot(new_bot)
+        logger.info(f"Successfully stored bot {new_bot.id} in database")
+        
+        # Log thông tin về việc trigger embedding/statemachine
+        if new_bot.sync_status == "QUEUED":
+            logger.info(f"Bot {new_bot.id} is queued for embedding/knowledge base processing")
+        else:
+            logger.info(f"Bot {new_bot.id} does not require embedding processing")
+            
+    except Exception as e:
+        logger.error(f"Failed to store bot {new_bot.id}: {e}")
+        raise
 
     return new_bot.to_output()
 
@@ -152,12 +172,20 @@ def modify_owned_bot(
     user: User, bot_id: str, modify_input: BotModifyInput
 ) -> BotModifyOutput:
     """Modify owned bot."""
+    logger.info(f"Modifying bot {bot_id} for user {user.id}")
+    
     bot = find_bot_by_id(bot_id)
+    logger.info(f"Found existing bot with sync_status: {bot.sync_status}")
 
     if not bot.is_editable_by_user(user):
         raise PermissionError(
             f"User {user.id} is not authorized to modify bot {bot_id}"
         )
+
+    # Log thông tin về việc cần embedding hay không
+    embedding_required = modify_input.is_embedding_required(bot)
+    guardrails_required = modify_input.is_guardrails_update_required(bot)
+    logger.info(f"Embedding required: {embedding_required}, Guardrails update required: {guardrails_required}")
 
     source_urls = []
     sitemap_urls = []
@@ -169,6 +197,8 @@ def modify_owned_bot(
         source_urls = modify_input.knowledge.source_urls
         sitemap_urls = modify_input.knowledge.sitemap_urls
         s3_urls = modify_input.knowledge.s3_urls
+
+        logger.info(f"Processing knowledge update: {len(modify_input.knowledge.added_filenames)} added files, {len(modify_input.knowledge.deleted_filenames)} deleted files")
 
         # Commit changes to S3
         _update_s3_documents_by_diff(
@@ -186,6 +216,7 @@ def modify_owned_bot(
             modify_input.knowledge.added_filenames
             + modify_input.knowledge.unchanged_filenames
         )
+        logger.info(f"Successfully processed knowledge files: {len(filenames)} total files")
 
     generation_params = (
         GenerationParamsModel(
@@ -211,6 +242,12 @@ def modify_owned_bot(
         or modify_input.is_guardrails_update_required(bot)
         else "SUCCEEDED"
     )
+    
+    logger.info(f"Setting sync_status to: {sync_status}")
+    if sync_status == "QUEUED":
+        logger.info("Bot will be queued for embedding/statemachine processing")
+    else:
+        logger.info("Bot update does not require embedding processing")
 
     # Use the existing knowledge base (KB) configuration if available, as it may have been set externally
     # by a Step Functions state machine for embedding processes e.g. data source id. If a new KB configuration is provided,
@@ -227,50 +264,57 @@ def modify_owned_bot(
                 **modify_input.bedrock_knowledge_base.model_dump()
             )
         )
+        logger.info("Updated Bedrock Knowledge Base configuration")
     else:
         updated_kb = current_bot_kb
 
-    update_bot(
-        bot.owner_user_id,
-        bot_id,
-        title=modify_input.title,
-        instruction=modify_input.instruction,
-        description=modify_input.description if modify_input.description else "",
-        generation_params=generation_params,
-        agent=AgentModel.from_agent_input(
-            modify_input.agent, bot.owner_user_id, bot_id
-        ),
-        knowledge=KnowledgeModel(
-            source_urls=source_urls,
-            sitemap_urls=sitemap_urls,
-            filenames=filenames,
-            s3_urls=s3_urls,
-        ),
-        prompt_caching_enabled=modify_input.prompt_caching_enabled,
-        sync_status=sync_status,
-        sync_status_reason="",
-        display_retrieved_chunks=modify_input.display_retrieved_chunks,
-        conversation_quick_starters=(
-            []
-            if modify_input.conversation_quick_starters is None
-            else [
-                ConversationQuickStarterModel(
-                    title=starter.title,
-                    example=starter.example,
-                )
-                for starter in modify_input.conversation_quick_starters
-            ]
-        ),
-        bedrock_knowledge_base=updated_kb,
-        bedrock_guardrails=(
-            BedrockGuardrailsModel(**modify_input.bedrock_guardrails.model_dump())
-            if modify_input.bedrock_guardrails
-            else None
-        ),
-        active_models=ActiveModelsOutput.model_validate(
-            modify_input.active_models.model_dump()  # type: ignore
-        ),
-    )
+    try:
+        update_bot(
+            bot.owner_user_id,
+            bot_id,
+            title=modify_input.title,
+            instruction=modify_input.instruction,
+            description=modify_input.description if modify_input.description else "",
+            generation_params=generation_params,
+            agent=AgentModel.from_agent_input(
+                modify_input.agent, bot.owner_user_id, bot_id
+            ),
+            knowledge=KnowledgeModel(
+                source_urls=source_urls,
+                sitemap_urls=sitemap_urls,
+                filenames=filenames,
+                s3_urls=s3_urls,
+            ),
+            prompt_caching_enabled=modify_input.prompt_caching_enabled,
+            sync_status=sync_status,
+            sync_status_reason="",
+            display_retrieved_chunks=modify_input.display_retrieved_chunks,
+            conversation_quick_starters=(
+                []
+                if modify_input.conversation_quick_starters is None
+                else [
+                    ConversationQuickStarterModel(
+                        title=starter.title,
+                        example=starter.example,
+                    )
+                    for starter in modify_input.conversation_quick_starters
+                ]
+            ),
+            bedrock_knowledge_base=updated_kb,
+            bedrock_guardrails=(
+                BedrockGuardrailsModel(**modify_input.bedrock_guardrails.model_dump())
+                if modify_input.bedrock_guardrails
+                else None
+            ),
+            active_models=ActiveModelsOutput.model_validate(
+                modify_input.active_models.model_dump()  # type: ignore
+            ),
+        )
+        logger.info(f"Successfully updated bot {bot_id} in database with sync_status: {sync_status}")
+        
+    except Exception as e:
+        logger.error(f"Failed to update bot {bot_id}: {e}")
+        raise
 
     return BotModifyOutput(
         id=bot_id,

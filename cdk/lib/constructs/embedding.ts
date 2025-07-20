@@ -386,8 +386,46 @@ export class Embedding extends Construct {
     );
 
     const waitTask = new sfn.Wait(this, "WaitSeconds", {
-      time: sfn.WaitTime.duration(Duration.seconds(3)),
+      time: sfn.WaitTime.duration(Duration.seconds(30)), // Tăng từ 3s lên 30s để giảm số lần poll
     });
+
+    // Thêm counter để theo dõi số lần retry
+    const initializeRetryCounter = new sfn.Pass(this, "InitializeRetryCounter", {
+      parameters: {
+        "retryCount": 0,
+        "maxRetries": 120, // Max 120 lần = 120 * 30s = 1 giờ timeout
+      },
+      resultPath: "$.RetryConfig",
+    });
+
+    const incrementRetryCounter = new sfn.Pass(this, "IncrementRetryCounter", {
+      parameters: {
+        "retryCount.$": "States.MathAdd($.RetryConfig.retryCount, 1)",
+        "maxRetries.$": "$.RetryConfig.maxRetries",
+      },
+      resultPath: "$.RetryConfig",
+    });
+
+    const checkMaxRetries = new sfn.Choice(this, "CheckMaxRetries")
+      .when(
+        sfn.Condition.numberGreaterThanEquals("$.RetryConfig.retryCount", "$.RetryConfig.maxRetries"),
+        new tasks.LambdaInvoke(this, "UpdateSyncStatusTimeout", {
+          lambdaFunction: this._updateSyncStatusHandler,
+          payload: sfn.TaskInput.fromObject({
+            pk: sfn.JsonPath.stringAt("$.PK"),
+            sk: sfn.JsonPath.stringAt("$.SK"),
+            sync_status: "FAILED",
+            sync_status_reason: "Ingestion job timeout after 1 hour",
+          }),
+          resultPath: sfn.JsonPath.DISCARD,
+        }).next(
+          new sfn.Fail(this, "IngestionTimeout", {
+            cause: "Ingestion job timeout after 1 hour",
+            error: "INGESTION_TIMEOUT",
+          })
+        )
+      )
+      .otherwise(incrementRetryCounter.next(waitTask.next(getIngestionJob)));
 
     const checkIngestionJobStatus = new sfn.Choice(
       this,
@@ -420,16 +458,43 @@ export class Embedding extends Construct {
           })
         )
       )
-      .otherwise(waitTask.next(getIngestionJob));
+      .when(
+        sfn.Condition.stringEquals(
+          "$.IngestionJob.ingestionJob.status",
+          "STOPPED"
+        ),
+        new tasks.LambdaInvoke(this, "UpdateSyncStatusStopped", {
+          lambdaFunction: this._updateSyncStatusHandler,
+          payload: sfn.TaskInput.fromObject({
+            pk: sfn.JsonPath.stringAt("$.PK"),
+            sk: sfn.JsonPath.stringAt("$.SK"),
+            sync_status: "FAILED",
+            sync_status_reason: "Ingestion job was stopped",
+          }),
+          resultPath: sfn.JsonPath.DISCARD,
+        }).next(
+          new sfn.Fail(this, "IngestionStopped", {
+            cause: "Ingestion job was stopped",
+            error: "INGESTION_STOPPED",
+          })
+        )
+      )
+      .otherwise(checkMaxRetries); // Kiểm tra timeout trước khi retry
 
     const mapIngestionJobs = new sfn.Map(this, "MapIngestionJobs", {
       inputPath: "$.StackOutput.Payload.items",
       resultPath: sfn.JsonPath.DISCARD,
       maxConcurrency: 1,
+      // Thêm timeout cho toàn bộ Map task
+      timeout: Duration.hours(2), // 2 giờ timeout cho tất cả ingestion jobs
     }).itemProcessor(
-      startIngestionJob.next(getIngestionJob).next(checkIngestionJobStatus)
+      initializeRetryCounter
+        .next(startIngestionJob)
+        .next(getIngestionJob)
+        .next(checkIngestionJobStatus)
     );
 
+    // Thêm timeout cho toàn bộ State Machine
     const definition = extractFirstElement
       .next(updateSyncStatusRunning)
       .next(startCustomBotBuild)
@@ -441,6 +506,7 @@ export class Embedding extends Construct {
 
     this._stateMachine = new sfn.StateMachine(this, "StateMachine", {
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
+      timeout: Duration.hours(3), // Timeout tổng thể cho toàn bộ state machine
     });
     return this;
   }
