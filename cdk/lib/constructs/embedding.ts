@@ -408,7 +408,7 @@ export class Embedding extends Construct {
 
     const checkMaxRetries = new sfn.Choice(this, "CheckMaxRetries")
       .when(
-        sfn.Condition.numberGreaterThanEquals("$.RetryConfig.retryCount", "$.RetryConfig.maxRetries"),
+        sfn.Condition.numberGreaterThanEquals("$.RetryConfig.retryCount", 120),
         new tasks.LambdaInvoke(this, "UpdateSyncStatusTimeout", {
           lambdaFunction: this._updateSyncStatusHandler,
           payload: sfn.TaskInput.fromObject({
@@ -485,8 +485,7 @@ export class Embedding extends Construct {
       inputPath: "$.StackOutput.Payload.items",
       resultPath: sfn.JsonPath.DISCARD,
       maxConcurrency: 1,
-      // Thêm timeout cho toàn bộ Map task
-      timeout: Duration.hours(2), // 2 giờ timeout cho tất cả ingestion jobs
+      // Loại bỏ timeout vì MapProps không support
     }).itemProcessor(
       initializeRetryCounter
         .next(startIngestionJob)
