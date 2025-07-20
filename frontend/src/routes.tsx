@@ -13,41 +13,84 @@ import {
   matchRoutes,
   RouteObject,
   useLocation,
+  Navigate,
 } from 'react-router-dom';
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import BotDiscoverPage from './features/discover/pages/BotDiscoverPage.tsx';
 import BotRecentlyUsedPage from './pages/BotRecentlyUsedPage.tsx';
 import BotStarredPage from './pages/BotStarredPage.tsx';
 import ConversationHistoryPage from './pages/ConversationHistoryPage.tsx';
+import useLoginUser from './hooks/useLoginUser';
+
+// Component để bảo vệ các routes cần quyền CreatingBotAllowed hoặc Admin
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAllowCreatingBot, isAdmin } = useLoginUser();
+  
+  // Nếu user chỉ có PublishAllowed mà không có CreatingBotAllowed hoặc Admin
+  // thì redirect về trang admin hoặc trang khác phù hợp
+  if (!isAllowCreatingBot && !isAdmin) {
+    return <Navigate to="/admin/api-management" replace />;
+  }
+  
+  return <>{children}</>;
+};
 
 const rootChildren = [
   {
     path: '/',
-    element: <ChatPage />,
+    element: (
+      <ProtectedRoute>
+        <ChatPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/my',
-    element: <BotExplorePage />,
+    element: (
+      <ProtectedRoute>
+        <BotExplorePage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/recently-used',
-    element: <BotRecentlyUsedPage />,
+    element: (
+      <ProtectedRoute>
+        <BotRecentlyUsedPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/starred',
-    element: <BotStarredPage />,
+    element: (
+      <ProtectedRoute>
+        <BotStarredPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/discover',
-    element: <BotDiscoverPage />,
+    element: (
+      <ProtectedRoute>
+        <BotDiscoverPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/new',
-    element: <BotKbEditPage />,
+    element: (
+      <ProtectedRoute>
+        <BotKbEditPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/edit/:botId',
-    element: <BotKbEditPage />,
+    element: (
+      <ProtectedRoute>
+        <BotKbEditPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/bot/api-settings/:botId',
@@ -55,11 +98,19 @@ const rootChildren = [
   },
   {
     path: '/bot/:botId',
-    element: <ChatPage />,
+    element: (
+      <ProtectedRoute>
+        <ChatPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/conversations',
-    element: <ConversationHistoryPage />,
+    element: (
+      <ProtectedRoute>
+        <ConversationHistoryPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/admin/shared-bot-analytics',
@@ -75,7 +126,11 @@ const rootChildren = [
   },
   {
     path: '/:conversationId',
-    element: <ChatPage />,
+    element: (
+      <ProtectedRoute>
+        <ChatPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '*',

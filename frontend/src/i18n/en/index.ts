@@ -930,41 +930,27 @@ How would you categorize this email?`,
       },
     },
     error: {
-      answerResponse: 'An error occurred while responding.',
+      answerResponse: 'An error occurred during the response.',
       notFoundConversation:
-        'Since the specified chat does not exist, a new chat screen is displayed.',
-      notFoundPage: 'The page you are looking for is not found.',
-      cannotAccessBot: 'Cannot access this bot. Redirected to New Chat.',
+        'Since the specified conversation does not exist, a new conversation has been started.',
+      notFoundPage: 'Page not found.',
       unexpectedError: {
-        title: 'An unexpected error has occurred.',
-        restore: 'Go to TOP page',
+        title: 'Unexpected Error Occurred',
+        restore: 'Return to Home Screen',
       },
       predict: {
-        general: 'An error occurred while predicting.',
+        general: 'An error occurred during the prediction.',
         invalidResponse:
-          'Unexpected response received. The response format does not match the expected format.',
+          'Unexpected response. Please confirm that the prompt is appropriate.',
       },
-      notSupportedImage: 'The selected model does not support images.',
-      unsupportedFileFormat: 'The selected file format is not supported.',
-      totalFileSizeToSendExceeded:
-        'The total file size must be no more than {{maxSize}}.',
-      attachment: {
-        fileSizeExceeded:
-          'Each document size must be no more than {{maxSize}}.',
-        fileCountExceeded: 'Could not upload more than {{maxCount}} files.',
-      },
-      share: {
-        markedEssential: {
-          title: 'Unable to Change Sharing Settings',
-          content:
-            'This bot is marked Essential by administrator. Essential bots must be shared with all users.',
-        },
-        publication: {
-          title: 'Unable to Change Sharing Settings',
-          content:
-            'This bot is published as API by administrator. Published API must be shared with all users.',
-        },
-      },
+      notSupportedFile: 'This file is not supported.',
+      notAllowedToAccessBot: 'You are not authorized to access this bot.',
+      notAllowedToAccessBots: 'You do not have permission to access bot features.',
+      notAllowedToEditBot: 'You are not authorized to edit this bot.',
+      notAllowedToDeleteBot: 'You are not authorized to delete this bot.',
+      notAllowedToCreateBot: 'You are not authorized to create a bot.',
+      botNotFound: 'The bot specified does not exist.',
+      cannotAccessBot: 'Cannot access the specified bot.',
     },
     validation: {
       title: 'Validation Error',
