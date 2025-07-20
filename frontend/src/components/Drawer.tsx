@@ -41,7 +41,6 @@ import Button from './Button';
 import Skeleton from './Skeleton';
 import { isPinnedBot } from '../utils/BotUtils';
 import IconPinnedBot from './IconPinnedBot';
-import useLoginUser from '../hooks/useLoginUser';
 
 type Props = BaseProps & {
   isAdmin: boolean;
@@ -204,7 +203,6 @@ const Drawer: React.FC<Props> = (props) => {
   const { getPageLabel } = usePageLabel();
   const { opened, switchOpen, drawerOptions } = useDrawer();
   const { conversations, starredBots, recentlyUsedUnstarredBots } = props;
-  const { isAllowCreatingBot, isAllowApiSettings } = useLoginUser();
 
   const location = useLocation();
 
@@ -281,10 +279,6 @@ const Drawer: React.FC<Props> = (props) => {
     return location.pathname.startsWith('/admin');
   }, [location.pathname]);
 
-  // Kiểm tra xem user có được phép access các tính năng bot cơ bản không
-  // Nếu user chỉ có PublishAllowed mà không có CreatingBotAllowed hoặc Admin thì sẽ bị ẩn
-  const canAccessBotFeatures = isAllowCreatingBot || props.isAdmin;
-
   return (
     <>
       <div className="relative h-full overflow-y-auto bg-aws-squid-ink-light scrollbar-thin scrollbar-track-white scrollbar-thumb-aws-squid-ink-light/30 dark:bg-aws-ui-color-dark dark:scrollbar-thumb-aws-ui-color-dark/30">
@@ -294,38 +288,32 @@ const Drawer: React.FC<Props> = (props) => {
           } text-sm  text-white transition-width`}>
           {!isAdminPanel && (
             <>
-              {canAccessBotFeatures && (
-                <DrawerItem
-                  isActive={false}
-                  icon={<PiNotePencil />}
-                  to="/"
-                  onClick={onClickNewChat}
-                  labelComponent={t('button.newChat')}
-                />
-              )}
-              {canAccessBotFeatures && (
-                <DrawerItem
-                  isActive={false}
-                  icon={<PiListBullets />}
-                  to="/bot/my"
-                  labelComponent={getPageLabel('/bot/my')}
-                  onClick={closeSmallDrawer}
-                />
-              )}
-              {canAccessBotFeatures && (
-                <DrawerItem
-                  isActive={false}
-                  icon={<PiCompass />}
-                  to="/bot/discover"
-                  labelComponent={getPageLabel('/bot/discover')}
-                  onClick={closeSmallDrawer}
-                />
-              )}
+              <DrawerItem
+                isActive={false}
+                icon={<PiNotePencil />}
+                to="/"
+                onClick={onClickNewChat}
+                labelComponent={t('button.newChat')}
+              />
+              <DrawerItem
+                isActive={false}
+                icon={<PiListBullets />}
+                to="/bot/my"
+                labelComponent={getPageLabel('/bot/my')}
+                onClick={closeSmallDrawer}
+              />
+              <DrawerItem
+                isActive={false}
+                icon={<PiCompass />}
+                to="/bot/discover"
+                labelComponent={getPageLabel('/bot/discover')}
+                onClick={closeSmallDrawer}
+              />
 
               <ExpandableDrawerGroup
                 label={t('app.starredBots')}
                 className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark">
-                {canAccessBotFeatures && starredBots === undefined && (
+                {starredBots === undefined && (
                   <div className="flex flex-col gap-2 p-2">
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
@@ -334,7 +322,7 @@ const Drawer: React.FC<Props> = (props) => {
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
                   </div>
                 )}
-                {canAccessBotFeatures && starredBots
+                {starredBots
                   ?.slice(0, drawerOptions.displayCount.starredBots)
                   .map((bot) => (
                     <DrawerItem
@@ -353,7 +341,7 @@ const Drawer: React.FC<Props> = (props) => {
                     />
                   ))}
 
-                {canAccessBotFeatures && starredBots && (
+                {starredBots && starredBots.length > 15 && (
                   <Button
                     text
                     rightIcon={<PiArrowRight />}
@@ -365,18 +353,12 @@ const Drawer: React.FC<Props> = (props) => {
                     {t('bot.button.viewAll')}
                   </Button>
                 )}
-
-                {!canAccessBotFeatures && (
-                  <div className="p-4 text-center text-sm text-gray-500">
-                    {t('error.notAllowedToAccessBots')}
-                  </div>
-                )}
               </ExpandableDrawerGroup>
 
               <ExpandableDrawerGroup
                 label={t('app.recentlyUsedBots')}
-                className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark">
-                {canAccessBotFeatures && recentlyUsedUnstarredBots === undefined && (
+                className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark ">
+                {recentlyUsedUnstarredBots === undefined && (
                   <div className="flex flex-col gap-2 p-2">
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
@@ -385,8 +367,7 @@ const Drawer: React.FC<Props> = (props) => {
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
                   </div>
                 )}
-
-                {canAccessBotFeatures && recentlyUsedUnstarredBots
+                {recentlyUsedUnstarredBots
                   ?.slice(0, drawerOptions.displayCount.recentlyUsedBots)
                   .map((bot) => (
                     <DrawerItem
@@ -405,7 +386,7 @@ const Drawer: React.FC<Props> = (props) => {
                     />
                   ))}
 
-                {canAccessBotFeatures && recentlyUsedUnstarredBots && (
+                {recentlyUsedUnstarredBots && (
                   <Button
                     text
                     rightIcon={<PiArrowRight />}
@@ -416,12 +397,6 @@ const Drawer: React.FC<Props> = (props) => {
                     }}>
                     {t('bot.button.viewAll')}
                   </Button>
-                )}
-
-                {!canAccessBotFeatures && (
-                  <div className="p-4 text-center text-sm text-gray-500">
-                    {t('error.notAllowedToAccessBots')}
-                  </div>
                 )}
               </ExpandableDrawerGroup>
 
