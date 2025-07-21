@@ -25,6 +25,8 @@ ERROR_MESSAGES = {
     "PERMISSION_ERROR": "Insufficient permissions to create knowledge base. Please contact your administrator.",
     "RESOURCE_LIMIT_EXCEEDED": "Resource limits exceeded. Please try again later or contact support.",
     "MODEL_NOT_AVAILABLE": "The selected embedding model is not available in this region.",
+    "CONFLICT_EXCEPTION": "Too many concurrent knowledge base operations. Please wait a moment and try again.",
+    "ConflictException": "Another knowledge base operation is currently in progress. Please wait for it to complete and try again.",
     "DEFAULT": "An unexpected error occurred during bot creation. Please try again."
 }
 
@@ -76,10 +78,10 @@ def extract_from_cause(cause_str: str) -> tuple:
 
 def get_user_friendly_error_message(sync_status_reason: str, error_details: str = "") -> str:
     """Trả về thông báo lỗi dễ hiểu cho người dùng"""
-    
+
     # Kiểm tra các từ khóa trong sync_status_reason để xác định loại lỗi
     reason_lower = sync_status_reason.lower()
-    
+
     if "timeout" in reason_lower:
         return ERROR_MESSAGES["INGESTION_TIMEOUT"]
     elif "stopped" in reason_lower:
@@ -92,6 +94,10 @@ def get_user_friendly_error_message(sync_status_reason: str, error_details: str 
         return ERROR_MESSAGES["RESOURCE_LIMIT_EXCEEDED"]
     elif "model" in reason_lower and ("not available" in reason_lower or "invalid" in reason_lower):
         return ERROR_MESSAGES["MODEL_NOT_AVAILABLE"]
+    elif "conflictexception" in reason_lower or "concurrent ingestion" in reason_lower:
+        return ERROR_MESSAGES["ConflictException"]
+    elif "conflict" in reason_lower and "ingestion" in reason_lower:
+        return ERROR_MESSAGES["ConflictException"]
     elif "knowledge base" in reason_lower and "failed" in reason_lower:
         return ERROR_MESSAGES["KNOWLEDGE_BASE_CREATION_FAILED"]
     else:
@@ -170,9 +176,9 @@ def handler(event, context):
                 logger.error(f"Failed to update sync status for bot {bot_id}")
         except:
             pass
-        
+
         return {
-            "statusCode": 500, 
+            "statusCode": 500,
             "body": json.dumps({
                 "error": "Error updating sync status.",
                 "details": str(e)

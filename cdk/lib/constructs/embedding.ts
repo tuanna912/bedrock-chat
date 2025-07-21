@@ -356,6 +356,40 @@ export class Embedding extends Construct {
       }
     );
 
+    // Add retry configuration for ConflictException
+    startIngestionJob.addRetry({
+      errors: ["ConflictException"],
+      interval: Duration.seconds(60),
+      maxAttempts: 5,
+      backoffRate: 1.5,
+    });
+
+    // Add catch handler for ConflictException after retries are exhausted
+    const conflictExceptionHandler = new tasks.LambdaInvoke(
+      this,
+      "UpdateSyncStatusConflictFailed",
+      {
+        lambdaFunction: this._updateSyncStatusHandler,
+        payload: sfn.TaskInput.fromObject({
+          "pk.$": "$.PK",
+          "sk.$": "$.SK",
+          sync_status: "FAILED",
+          sync_status_reason: "Too many concurrent ingestion jobs. Please wait a moment and try again.",
+        }),
+        resultPath: sfn.JsonPath.DISCARD,
+      }
+    ).next(
+      new sfn.Fail(this, "ConflictExceptionFail", {
+        cause: "ConflictException: Maximum concurrent ingestion jobs exceeded",
+        error: "CONFLICT_EXCEPTION",
+      })
+    );
+
+    startIngestionJob.addCatch(conflictExceptionHandler, {
+      errors: ["ConflictException"],
+      resultPath: "$.Error",
+    });
+
     const getIngestionJob = new tasks.CallAwsServiceCrossRegion(
       this,
       "GetIngestionJob",
@@ -479,7 +513,7 @@ export class Embedding extends Construct {
           })
         )
       )
-      .otherwise(checkMaxRetries); // Kiểm tra timeout trước khi retry
+      .otherwise(checkMaxRetries);
 
     const mapIngestionJobs = new sfn.Map(this, "MapIngestionJobs", {
       inputPath: "$.StackOutput.Payload.items",
