@@ -41,6 +41,7 @@ import Button from './Button';
 import Skeleton from './Skeleton';
 import { isPinnedBot } from '../utils/BotUtils';
 import IconPinnedBot from './IconPinnedBot';
+import useLoginUser from '../hooks/useLoginUser';
 
 type Props = BaseProps & {
   isAdmin: boolean;
@@ -203,6 +204,7 @@ const Drawer: React.FC<Props> = (props) => {
   const { getPageLabel } = usePageLabel();
   const { opened, switchOpen, drawerOptions } = useDrawer();
   const { conversations, starredBots, recentlyUsedUnstarredBots } = props;
+  const { isAdmin } = useLoginUser();
 
   const location = useLocation();
 
@@ -294,6 +296,7 @@ const Drawer: React.FC<Props> = (props) => {
                 to="/"
                 onClick={onClickNewChat}
                 labelComponent={t('button.newChat')}
+                className={isAdmin ? '' : 'hidden'}
               />
               <DrawerItem
                 isActive={false}
@@ -301,6 +304,7 @@ const Drawer: React.FC<Props> = (props) => {
                 to="/bot/my"
                 labelComponent={getPageLabel('/bot/my')}
                 onClick={closeSmallDrawer}
+                className={isAdmin ? '' : 'hidden'}
               />
               <DrawerItem
                 isActive={false}
@@ -308,11 +312,15 @@ const Drawer: React.FC<Props> = (props) => {
                 to="/bot/discover"
                 labelComponent={getPageLabel('/bot/discover')}
                 onClick={closeSmallDrawer}
+                className={isAdmin ? '' : 'hidden'}
               />
 
               <ExpandableDrawerGroup
                 label={t('app.starredBots')}
-                className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark">
+                className={twMerge(
+                  'border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark',
+                  isAdmin ? '' : 'hidden'
+                )}>
                 {starredBots === undefined && (
                   <div className="flex flex-col gap-2 p-2">
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
@@ -357,7 +365,10 @@ const Drawer: React.FC<Props> = (props) => {
 
               <ExpandableDrawerGroup
                 label={t('app.recentlyUsedBots')}
-                className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark ">
+                className={twMerge(
+                  'border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark',
+                  isAdmin ? '' : 'hidden'
+                )}>
                 {recentlyUsedUnstarredBots === undefined && (
                   <div className="flex flex-col gap-2 p-2">
                     <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
