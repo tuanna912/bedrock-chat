@@ -17,6 +17,7 @@ const AuthAmplify: React.FC<Props> = ({ socialProviders, children }) => {
   return (
     <Authenticator
       socialProviders={socialProviders}
+      hideSignUp={true}
       components={{
         Header: () => (
           <div className="mb-5 mt-10 flex justify-center text-3xl text-aws-font-color-light">
