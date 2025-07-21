@@ -393,7 +393,7 @@ export class Embedding extends Construct {
     const initializeRetryCounter = new sfn.Pass(this, "InitializeRetryCounter", {
       parameters: {
         "retryCount": 0,
-        "maxRetries": 120, // Max 120 lần = 120 * 30s = 1 giờ timeout
+        "maxRetries": 10, // Max 10 lần = 10 * 30s = 5 phút timeout
       },
       resultPath: "$.RetryConfig",
     });
