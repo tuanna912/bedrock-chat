@@ -69,7 +69,12 @@ const ChatPage: React.FC = () => {
   const { errorDetail } = usePostMessageStreaming();
   const { isAdmin } = useLoginUser();
   const { pinBot, unpinBot } = useBotPinning();
-  const { myBots, isLoadingMyBots } = useBot();
+  const {
+    myBots,
+    isLoadingMyBots,
+    recentlyUsedBots,
+    isLoadingRecentlyUsedBots,
+  } = useBot();
 
   const {
     agentThinking,
@@ -124,33 +129,47 @@ const ChatPage: React.FC = () => {
 
   // Redirect non-admin users from home page to first custom bot
   useEffect(() => {
+    // Get available bots (prioritize myBots, fallback to recentlyUsedBots)
+    const availableBots =
+      myBots && myBots.length > 0 ? myBots : recentlyUsedBots;
+    const isLoadingBots = isLoadingMyBots || isLoadingRecentlyUsedBots;
+
     // Debug logging
     console.log('🔍 Redirect Debug:', {
       isAdmin,
       paramBotId,
       paramConversationId,
       myBotsLength: myBots?.length || 0,
+      recentlyUsedBotsLength: recentlyUsedBots?.length || 0,
+      availableBotsLength: availableBots?.length || 0,
       isLoadingMyBots,
+      isLoadingRecentlyUsedBots,
+      isLoadingBots,
       myBots: myBots?.map((bot) => ({ id: bot.id, title: bot.title })) || [],
+      recentlyUsedBots:
+        recentlyUsedBots?.map((bot) => ({ id: bot.id, title: bot.title })) ||
+        [],
+      availableBots:
+        availableBots?.map((bot) => ({ id: bot.id, title: bot.title })) || [],
       shouldRedirect:
         !isAdmin &&
         !paramBotId &&
         !paramConversationId &&
-        myBots &&
-        myBots.length > 0,
+        availableBots &&
+        availableBots.length > 0,
     });
 
     // Check if we're on the home page (no botId, no conversationId)
-    // Wait for myBots to finish loading before redirecting
+    // Wait for bots to finish loading before redirecting
     if (
       !isAdmin &&
       !paramBotId &&
       !paramConversationId &&
-      !isLoadingMyBots &&
-      myBots &&
-      myBots.length > 0
+      !isLoadingBots &&
+      availableBots &&
+      availableBots.length > 0
     ) {
-      const firstBot = myBots[0];
+      const firstBot = availableBots[0];
       console.log('🚀 Redirecting to:', `/bot/${firstBot.id}`);
       navigate(`/bot/${firstBot.id}`, { replace: true });
     }
@@ -160,6 +179,8 @@ const ChatPage: React.FC = () => {
     paramConversationId,
     myBots,
     isLoadingMyBots,
+    recentlyUsedBots,
+    isLoadingRecentlyUsedBots,
     navigate,
   ]);
 
