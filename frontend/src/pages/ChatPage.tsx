@@ -69,6 +69,7 @@ const ChatPage: React.FC = () => {
   const { errorDetail } = usePostMessageStreaming();
   const { isAdmin } = useLoginUser();
   const { pinBot, unpinBot } = useBotPinning();
+  const { myBots } = useBot();
 
   const {
     agentThinking,
@@ -120,6 +121,21 @@ const ChatPage: React.FC = () => {
   const botId = useMemo(() => {
     return paramBotId ?? getBotId(conversationId);
   }, [conversationId, getBotId, paramBotId]);
+
+  // Redirect non-admin users from home page to first custom bot
+  useEffect(() => {
+    // Check if we're on the home page (no botId, no conversationId)
+    if (
+      !isAdmin &&
+      !paramBotId &&
+      !paramConversationId &&
+      myBots &&
+      myBots.length > 0
+    ) {
+      const firstBot = myBots[0];
+      navigate(`/bot/${firstBot.id}`, { replace: true });
+    }
+  }, [isAdmin, paramBotId, paramConversationId, myBots, navigate]);
 
   const {
     data: bot,
