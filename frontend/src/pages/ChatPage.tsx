@@ -69,7 +69,7 @@ const ChatPage: React.FC = () => {
   const { errorDetail } = usePostMessageStreaming();
   const { isAdmin } = useLoginUser();
   const { pinBot, unpinBot } = useBotPinning();
-  const { myBots } = useBot();
+  const { myBots, isLoadingMyBots } = useBot();
 
   const {
     agentThinking,
@@ -124,18 +124,44 @@ const ChatPage: React.FC = () => {
 
   // Redirect non-admin users from home page to first custom bot
   useEffect(() => {
+    // Debug logging
+    console.log('🔍 Redirect Debug:', {
+      isAdmin,
+      paramBotId,
+      paramConversationId,
+      myBotsLength: myBots?.length || 0,
+      isLoadingMyBots,
+      myBots: myBots?.map((bot) => ({ id: bot.id, title: bot.title })) || [],
+      shouldRedirect:
+        !isAdmin &&
+        !paramBotId &&
+        !paramConversationId &&
+        myBots &&
+        myBots.length > 0,
+    });
+
     // Check if we're on the home page (no botId, no conversationId)
+    // Wait for myBots to finish loading before redirecting
     if (
       !isAdmin &&
       !paramBotId &&
       !paramConversationId &&
+      !isLoadingMyBots &&
       myBots &&
       myBots.length > 0
     ) {
       const firstBot = myBots[0];
+      console.log('🚀 Redirecting to:', `/bot/${firstBot.id}`);
       navigate(`/bot/${firstBot.id}`, { replace: true });
     }
-  }, [isAdmin, paramBotId, paramConversationId, myBots, navigate]);
+  }, [
+    isAdmin,
+    paramBotId,
+    paramConversationId,
+    myBots,
+    isLoadingMyBots,
+    navigate,
+  ]);
 
   const {
     data: bot,
