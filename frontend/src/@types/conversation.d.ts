@@ -118,6 +118,7 @@ export type PostMessageRequest = {
   botId?: string;
   continueGenerate?: boolean;
   enableReasoning: boolean;
+  client_time?: string;
 };
 
 export type PostMessageResponse = {
@@ -135,7 +136,7 @@ export type ConversationMeta = {
   id: string;
   title: string;
   createTime: number;
-  lastMessageId: string; 
+  lastMessageId: string;
   model: Model;
   botId?: string;
 };

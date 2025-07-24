@@ -95,7 +95,7 @@ def prepare_conversation(
                 content=[
                     TextContentModel(
                         content_type="text",
-                        body="",
+                        body=f"Current time is {chat_input.client_time}.",
                     )
                 ],
                 model=chat_input.message.model,

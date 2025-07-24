@@ -433,6 +433,7 @@ const useChat = () => {
       },
       botId: bot?.botId,
       enableReasoning: params.enableReasoning,
+      client_time: new Date().toISOString(),
     };
     const createNewConversation = () => {
       // Copy State to prevent screen flicker

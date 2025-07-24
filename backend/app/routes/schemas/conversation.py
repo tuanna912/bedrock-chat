@@ -196,6 +196,7 @@ class ChatInput(BaseSchema):
     bot_id: str | None = Field(None)
     continue_generate: bool = Field(False)
     enable_reasoning: bool = Field(False)
+    client_time: str | None = Field(None)
 
 
 class ChatOutput(BaseSchema):
