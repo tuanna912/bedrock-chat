@@ -127,6 +127,10 @@ const BotKbEditPage: React.FC = () => {
   const [googleApiCredentials, setGoogleApiCredentials] = useState<string>('');
   const [googleDriveFolderId, setGoogleDriveFolderId] = useState<string>('');
 
+  // Bedrock Agent settings
+  const [bedrockAgentId, setBedrockAgentId] = useState<string>('');
+  const [bedrockAgentAliasId, setBedrockAgentAliasId] = useState<string>('');
+
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null); // Send null when creating a new bot
   const [existKnowledgeBaseId, setExistKnowledgeBaseId] = useState<
     string | null
@@ -2677,11 +2681,10 @@ const BotKbEditPage: React.FC = () => {
               {/* Add Google Export settings after other expandable groups */}
               <ExpandableDrawerGroup
                 isDefaultShow={false}
-                label={t('googleExport.title') || 'Google Export Settings'}
+                label={t('googleExport.title')}
                 className="py-2">
                 <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
-                  {t('googleExport.description') ||
-                    'Enable exporting conversation results to Google Docs or Google Sheets'}
+                  {t('googleExport.description')}
                 </div>
 
                 <div className="mt-4 flex items-start">
@@ -2690,13 +2693,9 @@ const BotKbEditPage: React.FC = () => {
                     onChange={setIsGoogleExportEnabled}
                   />
                   <div>
-                    <div>
-                      {t('googleExport.enableGoogleExport.title') ||
-                        'Enable Google Export'}
-                    </div>
+                    <div>{t('googleExport.enableGoogleExport.title')}</div>
                     <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
-                      {t('googleExport.enableGoogleExport.description') ||
-                        'Allow this bot to export conversation results to Google Docs or Google Sheets'}
+                      {t('googleExport.enableGoogleExport.description')}
                     </div>
                   </div>
                 </div>
@@ -2705,36 +2704,55 @@ const BotKbEditPage: React.FC = () => {
                   <>
                     <div className="mt-4">
                       <Textarea
-                        label={
-                          t('googleExport.googleApiCredentials.label') ||
-                          'Google API Credentials (JSON)'
-                        }
+                        label={t('googleExport.googleApiCredentials.label')}
                         value={googleApiCredentials}
                         onChange={setGoogleApiCredentials}
                         rows={5}
-                        hint={
-                          t('googleExport.googleApiCredentials.hint') ||
-                          'Paste your Google service account credentials JSON here'
-                        }
+                        hint={t('googleExport.googleApiCredentials.hint')}
                       />
                     </div>
 
                     <div className="mt-4">
                       <InputText
-                        label={
-                          t('googleExport.googleDriveFolderId.label') ||
-                          'Google Drive Folder ID (Optional)'
-                        }
+                        label={t('googleExport.googleDriveFolderId.label')}
                         value={googleDriveFolderId}
                         onChange={setGoogleDriveFolderId}
-                        hint={
-                          t('googleExport.googleDriveFolderId.hint') ||
-                          'ID of the Google Drive folder where documents will be saved'
-                        }
+                        hint={t('googleExport.googleDriveFolderId.hint')}
                       />
                     </div>
                   </>
                 )}
+              </ExpandableDrawerGroup>
+
+              <ExpandableDrawerGroup
+                isDefaultShow={false}
+                label={t('agent.tools.bedrockAgent.name')}
+                className="py-2">
+                <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                  {t('agent.tools.bedrockAgent.description')}
+                </div>
+
+                <div className="mt-4">
+                  <InputText
+                    label={t('agent.tools.bedrockAgent.agentId.label')}
+                    value={bedrockAgentId}
+                    onChange={setBedrockAgentId}
+                    placeholder={t(
+                      'agent.tools.bedrockAgent.agentId.placeholder'
+                    )}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <InputText
+                    label={t('agent.tools.bedrockAgent.aliasId.label')}
+                    value={bedrockAgentAliasId}
+                    onChange={setBedrockAgentAliasId}
+                    placeholder={t(
+                      'agent.tools.bedrockAgent.aliasId.placeholder'
+                    )}
+                  />
+                </div>
               </ExpandableDrawerGroup>
 
               <div className="flex justify-between">
