@@ -143,6 +143,15 @@ const BedrockCustomBotParametersSchema = BaseParametersSchema.extend({
     .optional()
     .transform((val) => val === "true")
     .default("false"),
+
+  // Google Export configuration
+  isGoogleExportEnabled: z
+    .string()
+    .optional()
+    .transform((val) => val === "true")
+    .default("false"),
+  googleApiCredentials: z.string().optional(),
+  googleDriveFolderId: z.string().optional(),
 });
 
 /**
@@ -322,6 +331,9 @@ export function resolveBedrockCustomBotParameters(): BedrockCustomBotParameters 
     knowledgeBase: getEnvVar("BEDROCK_KNOWLEDGE_BASE"),
     guardrails: getEnvVar("BEDROCK_GUARDRAILS"),
     enableRagReplicas: getEnvVar("ENABLE_RAG_REPLICAS"),
+    isGoogleExportEnabled: getEnvVar("IS_GOOGLE_EXPORT_ENABLED"),
+    googleApiCredentials: getEnvVar("GOOGLE_API_CREDENTIALS"),
+    googleDriveFolderId: getEnvVar("GOOGLE_DRIVE_FOLDER_ID"),
   };
 
   return BedrockCustomBotParametersSchema.parse(envVars);

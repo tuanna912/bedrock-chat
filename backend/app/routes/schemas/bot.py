@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -9,7 +10,19 @@ from typing import (
     Literal,
     Optional,
     Type,
+    TypeVar,
+    Union,
     get_args,
+)
+
+import logging
+from pydantic import (
+    Discriminator,
+    Field,
+    create_model,
+    field_validator,
+    model_validator,
+    validator,
 )
 
 from app.routes.schemas.base import BaseSchema
@@ -24,7 +37,7 @@ from app.routes.schemas.bot_kb import (
 from app.routes.schemas.conversation import type_model_name
 from charset_normalizer.utils import is_punctuation
 from pydantic import (
-    Discriminator,
+    BaseModel as PydanticBaseModel,
     Field,
     create_model,
     field_validator,
@@ -133,8 +146,14 @@ class BedrockAgentTool(BaseSchema):
     bedrockAgentConfig: Optional[BedrockAgentConfig] | None = None
 
 
+class GoogleExportTool(BaseSchema):
+    tool_type: Literal["google_export"] = "google_export"
+    name: str
+    description: str
+
+
 Tool = Annotated[
-    PlainTool | InternetTool | BedrockAgentTool, Discriminator("tool_type")
+    PlainTool | InternetTool | BedrockAgentTool | GoogleExportTool, Discriminator("tool_type")
 ]
 
 

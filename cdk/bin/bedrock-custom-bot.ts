@@ -73,6 +73,12 @@ interface GuardrailConfig {
   guardrailVersion?: number;
 }
 
+interface GoogleExportConfig {
+  isGoogleExportEnabled?: boolean;
+  googleApiCredentials?: string;
+  googleDriveFolderId?: string;
+}
+
 interface CrawlingConfig {
   crawlingScope?: CrawlingScope | undefined;
   crawlingFilters: CrawlingFilters;
@@ -180,6 +186,13 @@ const guardrailConfig: GuardrailConfig = {
     : undefined,
 };
 
+// Google Export configuration
+const googleExportConfig: GoogleExportConfig = {
+  isGoogleExportEnabled: params.isGoogleExportEnabled,
+  googleApiCredentials: params.googleApiCredentials,
+  googleDriveFolderId: params.googleDriveFolderId,
+};
+
 // Log organized configurations for debugging
 console.log("Base Configuration:", JSON.stringify(baseConfig, null, 2));
 console.log(
@@ -221,6 +234,18 @@ console.log(
     2
   )
 );
+console.log(
+  "Google Export Configuration:",
+  JSON.stringify(
+    {
+      isGoogleExportEnabled: googleExportConfig.isGoogleExportEnabled,
+      googleDriveFolderId: googleExportConfig.googleDriveFolderId,
+      hasGoogleApiCredentials: !!googleExportConfig.googleApiCredentials,
+    },
+    null,
+    2
+  )
+);
 
 // Create the stack
 new BedrockCustomBotStack(app, `BrChatKbStack${baseConfig.botId}`, {
@@ -255,6 +280,9 @@ new BedrockCustomBotStack(app, `BrChatKbStack${baseConfig.botId}`, {
 
   // Guardrail configuration
   guardrail: guardrailConfig,
+
+  // Google Export configuration
+  googleExport: googleExportConfig,
 });
 
 cdk.Tags.of(app).add("CDKEnvironment", baseConfig.envName);

@@ -26,6 +26,7 @@ import { UsageAnalysis } from "./usage-analysis";
 import { excludeDockerImage } from "../constants/docker";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
 import { Database } from "./database";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 
 export interface ApiProps {
   readonly database: Database;
@@ -47,6 +48,7 @@ export interface ApiProps {
 export class Api extends Construct {
   readonly api: HttpApi;
   readonly handler: IFunction;
+  public readonly googleApiSecret: secretsmanager.Secret;
   constructor(scope: Construct, id: string, props: ApiProps) {
     super(scope, id);
 
@@ -227,6 +229,12 @@ export class Api extends Construct {
     props.usageAnalysis?.ddbBucket.grantRead(handlerRole);
     props.largeMessageBucket.grantReadWrite(handlerRole);
 
+    // Create a secret for Google API credentials
+    this.googleApiSecret = new secretsmanager.Secret(this, "GoogleApiSecret", {
+      secretName: `${props.envPrefix ? props.envPrefix + "-" : ""}bedrock-chat-google-api-credentials`,
+      description: "Google API credentials for Bedrock Agent Google Export Tool",
+    });
+
     const handler = new PythonFunction(this, "HandlerV2", {
       entry: path.join(__dirname, "../../../backend"),
       index: "app/main.py",
@@ -266,6 +274,7 @@ export class Api extends Construct {
         OPENSEARCH_DOMAIN_ENDPOINT: props.openSearchEndpoint || "",
         AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
         PORT: "8000",
+        GOOGLE_API_SECRET_ARN: this.googleApiSecret.secretArn,
       },
       role: handlerRole,
       logRetention: logs.RetentionDays.THREE_MONTHS,
@@ -288,6 +297,9 @@ export class Api extends Construct {
       "Handler",
       "run.sh"
     );
+
+    // Add permissions to access the Google API secret
+    this.googleApiSecret.grantRead(handler);
 
     const api = new HttpApi(this, "Default", {
       description: `Main API for ${Stack.of(this).stackName}`,

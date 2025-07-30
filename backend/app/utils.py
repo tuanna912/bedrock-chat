@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Dict, Optional, List, Tuple
 
 import boto3
 from app.repositories.models.custom_bot_guardrails import BedrockGuardrailsModel
@@ -312,3 +312,37 @@ def delete_api_key_from_secret_manager(user_id: str, bot_id: str, prefix: str) -
     except ClientError as e:
         logger.error(f"Error accessing Secrets Manager: {e}")
         raise
+
+
+def get_google_api_credentials() -> Dict[str, Any]:
+    """
+    Get Google API credentials from AWS Secrets Manager.
+
+    Returns:
+        Dict[str, Any]: The Google API credentials as a dictionary.
+    """
+    try:
+        # Get the secret ARN from environment variable
+        secret_arn = os.environ.get("GOOGLE_API_SECRET_ARN")
+
+        if not secret_arn:
+            logger.warning("GOOGLE_API_SECRET_ARN environment variable not set")
+            return {}
+
+        # Create a Secrets Manager client
+        client = boto3.client("secretsmanager")
+
+        # Get the secret value
+        response = client.get_secret_value(SecretId=secret_arn)
+
+        # Parse the secret string as JSON
+        if "SecretString" in response:
+            secret_string = response["SecretString"]
+            return json.loads(secret_string)
+        else:
+            logger.warning("No SecretString found in the secret")
+            return {}
+
+    except Exception as e:
+        logger.error(f"Error getting Google API credentials: {e}")
+        return {}

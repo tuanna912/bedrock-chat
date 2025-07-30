@@ -8,6 +8,7 @@ import {
 import { VectorCollectionStandbyReplicas } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/opensearchserverless";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { BedrockFoundationModel } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock";
 import { ChunkingStrategy } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock/data-sources/chunking";
 import { S3DataSource } from "@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock/data-sources/s3-data-source";
@@ -46,6 +47,12 @@ interface BedrockGuardrailProps {
   readonly guardrailVersion?: number;
 }
 
+interface GoogleExportProps {
+  readonly isGoogleExportEnabled?: boolean;
+  readonly googleApiCredentials?: string;
+  readonly googleDriveFolderId?: string;
+}
+
 interface BedrockCustomBotStackProps extends StackProps {
   // Base configuration
   readonly ownerUserId: string;
@@ -73,6 +80,9 @@ interface BedrockCustomBotStackProps extends StackProps {
 
   // Guardrail configuration
   readonly guardrail?: BedrockGuardrailProps;
+
+  // Google Export configuration
+  readonly googleExport?: GoogleExportProps;
 }
 
 export class BedrockCustomBotStack extends Stack {
@@ -82,6 +92,42 @@ export class BedrockCustomBotStack extends Stack {
     const { docBucketsAndPrefixes } = this.setupBucketsAndPrefixes(props);
 
     let kb: IKnowledgeBase;
+
+    // Create Google API Secret if Google Export is enabled
+    if (props.googleExport?.isGoogleExportEnabled) {
+      const googleApiSecret = new secretsmanager.Secret(this, "GoogleApiSecret", {
+        secretName: `bedrock-chat-google-api-credentials-${props.botId.slice(0, 20).toLowerCase()}`,
+        description: `Google API credentials for bot ${props.botId}`,
+      });
+
+      // If credentials are provided, update the secret value
+      if (props.googleExport?.googleApiCredentials) {
+        const updateGoogleApiSecret = new AwsCustomResource(this, "UpdateGoogleApiSecret", {
+          onCreate: {
+            service: "secretsmanager",
+            action: "putSecretValue",
+            parameters: {
+              SecretId: googleApiSecret.secretArn,
+              SecretString: props.googleExport.googleApiCredentials,
+            },
+            physicalResourceId: PhysicalResourceId.of(`${googleApiSecret.secretArn}-update`),
+          },
+          policy: AwsCustomResourcePolicy.fromSdkCalls({
+            resources: [googleApiSecret.secretArn],
+          }),
+        });
+      }
+
+      new CfnOutput(this, "GoogleApiSecretArn", {
+        value: googleApiSecret.secretArn,
+      });
+
+      if (props.googleExport?.googleDriveFolderId) {
+        new CfnOutput(this, "GoogleDriveFolderId", {
+          value: props.googleExport.googleDriveFolderId,
+        });
+      }
+    }
 
     // if knowledge base arn does not exist
     if (props.existKnowledgeBaseId == undefined) {

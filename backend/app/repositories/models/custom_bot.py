@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Type, get_args
+from typing import Annotated, Any, Dict, List, Literal, Optional, Self, Type, get_args, Union
 
 from app.config import DEFAULT_GENERATION_CONFIG
 from app.config import GenerationParams as GenerationParamsDict
@@ -254,8 +254,25 @@ class BedrockAgentToolModel(BaseModel):
         )
 
 
+class GoogleExportToolModel(BaseModel):
+    tool_type: Literal["google_export"] = Field(
+        "google_export",
+        description="Type of tool. It handles exporting content to Google Docs or Sheets.",
+    )
+    name: str
+    description: str
+
+    @classmethod
+    def from_tool_input(cls, tool: Tool) -> Self:
+        return cls(
+            tool_type="google_export",
+            name=tool.name,
+            description=tool.description,
+        )
+
+
 ToolModel = Annotated[
-    PlainToolModel | InternetToolModel | BedrockAgentToolModel,
+    PlainToolModel | InternetToolModel | BedrockAgentToolModel | GoogleExportToolModel,
     Discriminator("tool_type"),
 ]
 
@@ -295,6 +312,8 @@ class AgentModel(BaseModel):
                 )
             elif tool_input.tool_type == "bedrock_agent":
                 tools.append(BedrockAgentToolModel.from_tool_input(tool_input))
+            elif tool_input.tool_type == "google_export":
+                tools.append(GoogleExportToolModel.from_tool_input(tool_input))
 
         return cls(tools=tools)
 
@@ -328,17 +347,23 @@ class AgentModel(BaseModel):
                         tool_type="bedrock_agent",
                         name=tool.name,
                         description=tool.description,
-                        bedrockAgentConfig=(
-                            BedrockAgentConfig(**tool.bedrockAgentConfig.model_dump())
-                            if tool.bedrockAgentConfig
-                            else None
-                        ),
+                        bedrockAgentConfig=tool.bedrockAgentConfig,
+                    )
+                )
+            elif isinstance(tool, GoogleExportToolModel):
+                tools.append(
+                    Tool(
+                        tool_type="google_export",
+                        name=tool.name,
+                        description=tool.description,
                     )
                 )
             else:
                 tools.append(
                     PlainTool(
-                        tool_type="plain", name=tool.name, description=tool.description
+                        tool_type="plain",
+                        name=tool.name,
+                        description=tool.description,
                     )
                 )
 

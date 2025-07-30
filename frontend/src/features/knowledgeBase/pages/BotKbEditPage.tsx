@@ -107,7 +107,8 @@ const BotKbEditPage: React.FC = () => {
     defaultGenerationConfig.reasoningParams?.budgetTokens ??
       EDGE_GENERATION_PARAMS.budgetTokens.MIN
   );
-  const [promptCachingEnabled, setPromptCachingEnabled] = useState<boolean>(false);
+  const [promptCachingEnabled, setPromptCachingEnabled] =
+    useState<boolean>(false);
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [conversationQuickStarters, setConversationQuickStarters] = useState<
     ConversationQuickStarter[]
@@ -586,6 +587,17 @@ const BotKbEditPage: React.FC = () => {
               ?.excludePatterns || [''],
           });
           setActiveModels(bot.activeModels);
+
+          // Set Google Export settings if available
+          if (bot.bedrockKnowledgeBase?.googleExport) {
+            setIsGoogleExportEnabled(
+              bot.bedrockKnowledgeBase.googleExport.isGoogleExportEnabled ||
+                false
+            );
+            setGoogleDriveFolderId(
+              bot.bedrockKnowledgeBase.googleExport.googleDriveFolderId || ''
+            );
+          }
         })
         .finally(() => {
           setIsLoading(false);
@@ -1258,6 +1270,15 @@ const BotKbEditPage: React.FC = () => {
         parsingModel,
         webCrawlingScope,
         webCrawlingFilters,
+        googleExport: {
+          isGoogleExportEnabled,
+          googleApiCredentials: isGoogleExportEnabled
+            ? googleApiCredentials
+            : undefined,
+          googleDriveFolderId: isGoogleExportEnabled
+            ? googleDriveFolderId
+            : undefined,
+        },
       },
       bedrockGuardrails: {
         isGuardrailEnabled:
@@ -1327,6 +1348,9 @@ const BotKbEditPage: React.FC = () => {
     webCrawlingScope,
     webCrawlingFilters,
     activeModels,
+    isGoogleExportEnabled,
+    googleApiCredentials,
+    googleDriveFolderId,
   ]);
 
   const onClickEdit = useCallback(() => {
@@ -1389,6 +1413,15 @@ const BotKbEditPage: React.FC = () => {
           parsingModel,
           webCrawlingScope,
           webCrawlingFilters,
+          googleExport: {
+            isGoogleExportEnabled,
+            googleApiCredentials: isGoogleExportEnabled
+              ? googleApiCredentials
+              : undefined,
+            googleDriveFolderId: isGoogleExportEnabled
+              ? googleDriveFolderId
+              : undefined,
+          },
         },
         bedrockGuardrails: {
           isGuardrailEnabled:
@@ -1464,6 +1497,9 @@ const BotKbEditPage: React.FC = () => {
     webCrawlingScope,
     webCrawlingFilters,
     activeModels,
+    isGoogleExportEnabled,
+    googleApiCredentials,
+    googleDriveFolderId,
   ]);
 
   const [isOpenSamples, setIsOpenSamples] = useState(false);
@@ -2340,7 +2376,7 @@ const BotKbEditPage: React.FC = () => {
                       {t('knowledgeBaseSettings.opensearchAnalyzer.hint')}
                     </div>
                     <div
-                      className="grid grid-cols-[auto_1fr] gap-2 rounded 
+                      className="grid grid-cols-[auto_1fr] gap-2 rounded
                       border border-aws-font-color-light/50 p-4 text-sm dark:border-aws-font-color-dark/50">
                       <div>
                         {t(
@@ -2598,17 +2634,22 @@ const BotKbEditPage: React.FC = () => {
               <ExpandableDrawerGroup
                 isDefaultShow={false}
                 label={t('bot.promptCaching.title')}
-                className="py-2"
-              >
-                <div className="flex mt-4 items-start">
+                className="py-2">
+                <div className="mt-4 flex items-start">
                   <Toggle
                     value={promptCachingEnabled}
                     onChange={setPromptCachingEnabled}
                   />
                   <div>
-                    <Trans t={t} i18nKey="bot.promptCaching.promptCachingEnabled.title" />
+                    <Trans
+                      t={t}
+                      i18nKey="bot.promptCaching.promptCachingEnabled.title"
+                    />
                     <div className="text-sm text-dark-gray dark:text-light-gray">
-                      <Trans t={t} i18nKey="bot.promptCaching.promptCachingEnabled.description" />
+                      <Trans
+                        t={t}
+                        i18nKey="bot.promptCaching.promptCachingEnabled.description"
+                      />
                     </div>
                   </div>
                 </div>
@@ -2626,6 +2667,69 @@ const BotKbEditPage: React.FC = () => {
                   </>
                 </Alert>
               )}
+
+              {/* Add Google Export settings after other expandable groups */}
+              <ExpandableDrawerGroup
+                isDefaultShow={false}
+                label={t('googleExport.title') || 'Google Export Settings'}
+                className="py-2">
+                <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                  {t('googleExport.description') ||
+                    'Enable exporting conversation results to Google Docs or Google Sheets'}
+                </div>
+
+                <div className="mt-4 flex items-start">
+                  <Toggle
+                    value={isGoogleExportEnabled}
+                    onChange={setIsGoogleExportEnabled}
+                  />
+                  <div>
+                    <div>
+                      {t('googleExport.enableGoogleExport.title') ||
+                        'Enable Google Export'}
+                    </div>
+                    <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                      {t('googleExport.enableGoogleExport.description') ||
+                        'Allow this bot to export conversation results to Google Docs or Google Sheets'}
+                    </div>
+                  </div>
+                </div>
+
+                {isGoogleExportEnabled && (
+                  <>
+                    <div className="mt-4">
+                      <Textarea
+                        label={
+                          t('googleExport.googleApiCredentials.label') ||
+                          'Google API Credentials (JSON)'
+                        }
+                        value={googleApiCredentials}
+                        onChange={setGoogleApiCredentials}
+                        rows={5}
+                        hint={
+                          t('googleExport.googleApiCredentials.hint') ||
+                          'Paste your Google service account credentials JSON here'
+                        }
+                      />
+                    </div>
+
+                    <div className="mt-4">
+                      <InputText
+                        label={
+                          t('googleExport.googleDriveFolderId.label') ||
+                          'Google Drive Folder ID (Optional)'
+                        }
+                        value={googleDriveFolderId}
+                        onChange={setGoogleDriveFolderId}
+                        hint={
+                          t('googleExport.googleDriveFolderId.hint') ||
+                          'ID of the Google Drive folder where documents will be saved'
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+              </ExpandableDrawerGroup>
 
               <div className="flex justify-between">
                 <Button outlined icon={<PiCaretLeft />} onClick={onClickBack}>

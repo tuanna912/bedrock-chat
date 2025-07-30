@@ -9,6 +9,13 @@ export type BedrockKnowledgeBase = {
   parsingModel?: ParsingModel;
   webCrawlingScope?: WebCrawlingScope;
   webCrawlingFilters?: WebCrawlingFilters;
+  googleExport?: GoogleExport;
+};
+
+export type GoogleExport = {
+  isGoogleExportEnabled?: boolean;
+  googleApiCredentials?: string;
+  googleDriveFolderId?: string;
 };
 
 export type EmbeddingsModel = 'titan_v2' | 'cohere_multilingual_v3';
