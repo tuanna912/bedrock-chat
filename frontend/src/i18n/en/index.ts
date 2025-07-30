@@ -1000,6 +1000,22 @@ How would you categorize this email?`,
         },
       },
     },
+    googleExport: {
+      title: 'Google Export Settings',
+      description: 'Enable exporting conversation results to Google Docs or Google Sheets',
+      enableGoogleExport: {
+        title: 'Enable Google Export',
+        description: 'Allow this bot to export conversation results to Google Docs or Google Sheets'
+      },
+      googleApiCredentials: {
+        label: 'Google API Credentials (JSON)',
+        hint: 'Paste your Google service account credentials JSON here'
+      },
+      googleDriveFolderId: {
+        label: 'Google Drive Folder ID (Optional)',
+        hint: 'ID of the Google Drive folder where documents will be saved'
+      }
+    },
     guardrails: {
       title: 'Guardrails',
       label: 'Enable Guardrails for Amazon Bedrock',

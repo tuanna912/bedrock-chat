@@ -9,13 +9,13 @@ const translation: typeof en = {
       },
     },
     app: {
-      name: 'Bedrock Chat',
+      name: 'Seedcom Fashion AI Chat',
       inputMessage: 'お手伝いできることはありますか？',
-      starredBots: 'スター付きのボット',
+      starredBots: 'スター付きボット',
       recentlyUsedBots: '最近使用したボット',
       conversationHistory: '最近のチャット',
       chatWaitingSymbol: '▍',
-      adminConsoles: '管理者用機能',
+      adminConsoles: '管理パネル',
       userGroups: 'ユーザーグループ',
       backChat: 'チャットに戻る',
     },
@@ -1056,6 +1056,22 @@ const translation: typeof en = {
       card: {
         label: '思考過程',
       },
+    },
+    googleExport: {
+      title: 'Google エクスポート設定',
+      description: '会話結果を Google ドキュメントまたは Google スプレッドシートにエクスポートできるようにする',
+      enableGoogleExport: {
+        title: 'Google エクスポートを有効にする',
+        description: 'このボットが会話結果を Google ドキュメントまたは Google スプレッドシートにエクスポートできるようにする'
+      },
+      googleApiCredentials: {
+        label: 'Google API 認証情報（JSON）',
+        hint: 'Google サービスアカウントの認証情報 JSON をここに貼り付けてください'
+      },
+      googleDriveFolderId: {
+        label: 'Google ドライブフォルダ ID（オプション）',
+        hint: 'ドキュメントが保存される Google ドライブフォルダの ID'
+      }
     },
   },
 };

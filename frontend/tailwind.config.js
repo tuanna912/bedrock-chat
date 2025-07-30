@@ -1,4 +1,7 @@
 /** @type {import('tailwindcss').Config} */
+import typography from '@tailwindcss/typography';
+import scrollbar from 'tailwind-scrollbar';
+
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
@@ -57,6 +60,5 @@ export default {
       },
     },
   },
-  // eslint-disable-next-line no-undef
-  plugins: [require('@tailwindcss/typography'), require('tailwind-scrollbar')],
+  plugins: [typography, scrollbar],
 };

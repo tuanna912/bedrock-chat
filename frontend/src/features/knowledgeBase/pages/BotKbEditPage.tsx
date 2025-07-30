@@ -121,6 +121,12 @@ const BotKbEditPage: React.FC = () => {
   const [webCrawlingScope, setWebCrawlingScope] =
     useState<WebCrawlingScope>('DEFAULT');
 
+  // Google Export settings
+  const [isGoogleExportEnabled, setIsGoogleExportEnabled] =
+    useState<boolean>(false);
+  const [googleApiCredentials, setGoogleApiCredentials] = useState<string>('');
+  const [googleDriveFolderId, setGoogleDriveFolderId] = useState<string>('');
+
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null); // Send null when creating a new bot
   const [existKnowledgeBaseId, setExistKnowledgeBaseId] = useState<
     string | null
