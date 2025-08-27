@@ -23,10 +23,10 @@ class EmbeddingConfig(TypedDict):
 DEFAULT_GENERATION_CONFIG: GenerationParams = {
     # Minimum (Haiku) is 4096
     # Ref: https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison
-    "max_tokens": 4096,
-    "top_k": 250,
-    "top_p": 0.999,
-    "temperature": 1.0,
+    "max_tokens": 2048,  # Reduced to limit response length and hallucination
+    "top_k": 50,  # Reduced from 250 to limit token choices
+    "top_p": 0.3,  # Reduced from 0.999 to limit vocabulary range 
+    "temperature": 0.2,  # Reduced from 1.0 to minimize creativity and hallucination
     "stop_sequences": ["Human: ", "Assistant: "],
     # Budget tokens must NOT exceeds max_tokens
     "reasoning_params": {"budget_tokens": 1024},

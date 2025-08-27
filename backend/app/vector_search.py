@@ -27,6 +27,7 @@ class SearchResult(TypedDict):
     rank: int
     metadata: dict[str, Any]
     page_number: int | None
+    score: float  # Add similarity score for validation
 
 
 def search_result_to_related_document(
@@ -131,6 +132,7 @@ def _bedrock_knowledge_base_search(bot: BotModel, query: str) -> list[SearchResu
         search_results = []
         for i, retrieval_result in enumerate(response.get("retrievalResults", [])):
             content = retrieval_result.get("content", {}).get("text", "")
+            score = retrieval_result.get("score", 0.0)  # Get similarity score
             source = extract_source_from_retrieval_result(retrieval_result)
 
             if source is not None:
@@ -154,6 +156,7 @@ def _bedrock_knowledge_base_search(bot: BotModel, query: str) -> list[SearchResu
                         source_link=source[1],
                         metadata=metadata,
                         page_number=page_number,
+                        score=score,
                     )
                 )
 
@@ -164,5 +167,51 @@ def _bedrock_knowledge_base_search(bot: BotModel, query: str) -> list[SearchResu
         raise e
 
 
+def _filter_search_results_by_quality(
+    search_results: list[SearchResult],
+    min_similarity_threshold: float = 0.7,  # Threshold to prevent hallucination
+    min_content_length: int = 20,  # Minimum content length for meaningful results
+) -> list[SearchResult]:
+    """Filter search results to ensure high quality and prevent hallucination."""
+    
+    if not search_results:
+        logger.info("No search results to filter")
+        return []
+    
+    # Filter by similarity score and content quality
+    filtered_results = []
+    for result in search_results:
+        # Check similarity threshold
+        if result["score"] < min_similarity_threshold:
+            logger.info(f"Filtered out result with low similarity score: {result['score']:.3f}")
+            continue
+            
+        # Check content quality
+        content = result["content"].strip()
+        if len(content) < min_content_length:
+            logger.info(f"Filtered out result with short content: {len(content)} chars")
+            continue
+            
+        # Check for meaningful content (not just metadata or headers)
+        if content.lower() in ["untitled", "no content", "n/a", ""]:
+            logger.info("Filtered out result with meaningless content")
+            continue
+            
+        filtered_results.append(result)
+    
+    logger.info(f"Filtered {len(search_results)} results down to {len(filtered_results)} high-quality results")
+    return filtered_results
+
+
 def search_related_docs(bot: BotModel, query: str) -> list[SearchResult]:
-    return _bedrock_knowledge_base_search(bot, query)
+    """Search for related documents with quality validation to prevent hallucination."""
+    raw_results = _bedrock_knowledge_base_search(bot, query)
+    
+    # Apply quality filtering to prevent hallucination
+    filtered_results = _filter_search_results_by_quality(raw_results)
+    
+    # Log filtering results for monitoring
+    if len(filtered_results) == 0 and len(raw_results) > 0:
+        logger.warning(f"All {len(raw_results)} search results were filtered out due to low quality/similarity")
+    
+    return filtered_results
