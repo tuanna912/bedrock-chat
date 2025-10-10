@@ -21,14 +21,6 @@ const AuthAmplify: React.FC<Props> = ({ socialProviders, children }) => {
     <Authenticator
       socialProviders={socialProviders}
       hideSignUp={!enableSignup}
-      loginMechanisms={['email']}
-      services={{
-        async handleForgotPassword() {
-          if (!enableForgotPassword) {
-            return;
-          }
-        },
-      }}
       components={{
         Header: () => (
           <div className="mb-5 mt-10 flex flex-col items-center justify-center gap-3">
@@ -56,7 +48,7 @@ const AuthAmplify: React.FC<Props> = ({ socialProviders, children }) => {
                     });
                     window.dispatchEvent(event);
                   }}>
-                  {t('button.forgotPassword')}
+                  Forgot Password?
                 </button>
               </div>
             );

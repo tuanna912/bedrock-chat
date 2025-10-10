@@ -10,7 +10,7 @@ const LazyOutputText: React.FC<Props> = (props) => {
   const [displayText, setDisplayText] = useState('');
 
   useEffect(() => {
-    const functions: NodeJS.Timeout[] = [];
+    const functions: ReturnType<typeof setTimeout>[] = [];
     props.text.split('').forEach((_, idx) => {
       functions.push(
         setTimeout(() => {
@@ -22,7 +22,6 @@ const LazyOutputText: React.FC<Props> = (props) => {
     });
 
     return () => {
-      // 多重読み込み対策でクリアする
       functions.forEach((f) => {
         clearTimeout(f);
       });

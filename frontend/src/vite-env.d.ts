@@ -12,6 +12,9 @@ interface ImportMetaEnv {
   readonly VITE_APP_SOCIAL_PROVIDERS: string;
   readonly VITE_APP_CUSTOM_PROVIDER_ENABLED: string;
   readonly VITE_APP_CUSTOM_PROVIDER_NAME: string;
+  readonly VITE_APP_ENABLE_SIGNUP: string;
+  readonly VITE_APP_ENABLE_FORGOT_PASSWORD: string;
+  readonly VITE_APP_LOGO_URL: string;
 }
 
 interface ImportMeta {
