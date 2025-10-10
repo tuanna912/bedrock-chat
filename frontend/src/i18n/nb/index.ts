@@ -34,7 +34,7 @@ const translation = {
           error: 'Feil',
         },
         app: {
-          name: 'Bedrock Chat',
+          name: 'Juno Chat',
           inputMessage: 'Send en melding',
           starredBots: 'Favorittbot',
           recentlyUsedBots: 'Nylig brukte boter',

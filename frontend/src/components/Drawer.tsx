@@ -203,6 +203,7 @@ const Drawer: React.FC<Props> = (props) => {
   const { getPageLabel } = usePageLabel();
   const { opened, switchOpen, drawerOptions } = useDrawer();
   const { conversations, starredBots, recentlyUsedUnstarredBots } = props;
+  const logoUrl = import.meta.env.VITE_APP_LOGO_URL;
 
   const location = useLocation();
 
@@ -286,6 +287,11 @@ const Drawer: React.FC<Props> = (props) => {
           className={`lg:visible lg:w-64 ${
             opened ? 'visible w-64' : 'invisible w-0'
           } text-sm  text-white transition-width`}>
+          {logoUrl && (
+            <div className="flex items-center justify-center border-b border-aws-sea-blue-light p-4 dark:border-aws-sea-blue-dark">
+              <img src={logoUrl} alt="Logo" className="h-12 w-12" />
+            </div>
+          )}
           {!isAdminPanel && (
             <>
               <DrawerItem
