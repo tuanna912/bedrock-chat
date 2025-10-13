@@ -10,7 +10,7 @@ from app.bedrock import (
     is_tooluse_supported,
 )
 from app.prompt import build_rag_prompt, get_prompt_to_cite_tool_results
-from app.utils.message_summarizer import limit_context_messages
+from app.message_utils.message_summarizer import limit_context_messages
 from app.repositories.conversation import (
     RecordNotFoundError,
     find_conversation_by_id,
