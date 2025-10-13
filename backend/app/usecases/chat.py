@@ -10,6 +10,7 @@ from app.bedrock import (
     is_tooluse_supported,
 )
 from app.prompt import build_rag_prompt, get_prompt_to_cite_tool_results
+from app.utils.message_summarizer import limit_context_messages
 from app.repositories.conversation import (
     RecordNotFoundError,
     find_conversation_by_id,
@@ -312,6 +313,9 @@ def chat(
         node_id=node_id,
         message_map=message_map,
     )
+
+    # Apply message summarization for long conversations
+    messages = limit_context_messages(messages)
 
     continue_generate = chat_input.continue_generate
 

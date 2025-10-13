@@ -80,6 +80,9 @@
     "tokenValidMinutes": 30,
     "alternateDomainName": "",
     "hostedZoneId": "",
-    "devAccessIamRoleArn": ""
+    "devAccessIamRoleArn": "",
+    "enableSignup": false,
+    "enableForgotPassword": false,
+    "logoUrl": "/logo-svg.svg"
   }
 }

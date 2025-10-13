@@ -112,8 +112,8 @@ export class WebSocket extends Construct {
         buildArgs: { POETRY_VERSION: "1.8.3" },
       },
       runtime: Runtime.PYTHON_3_13,
-      memorySize: 512,
-      timeout: Duration.minutes(15),
+      memorySize: 2048,
+      timeout: Duration.minutes(10),
       environment: {
         ACCOUNT: Stack.of(this).account,
         REGION: Stack.of(this).region,
@@ -128,6 +128,7 @@ export class WebSocket extends Construct {
         WEBSOCKET_SESSION_TABLE_NAME: props.websocketSessionTable.tableName,
         ENABLE_BEDROCK_CROSS_REGION_INFERENCE:
           props.enableBedrockCrossRegionInference.toString(),
+        MAX_MESSAGES_IN_CONTEXT: process.env.MAX_MESSAGES_IN_CONTEXT || "20",
       },
       role: handlerRole,
       snapStart: props.enableLambdaSnapStart

@@ -1,5 +1,8 @@
 import { GenerationParams } from '../@types/bot';
 
+// Maximum number of messages to send in context
+export const MAX_MESSAGES_IN_CONTEXT = 5;
+
 export const EDGE_GENERATION_PARAMS = {
   maxTokens: {
     // Claude 3.7 with extend thinking can generate up to 64k tokens

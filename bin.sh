@@ -46,6 +46,7 @@ IPV6_RANGES=""
 DISABLE_IPV6="false"
 ALLOWED_SIGN_UP_EMAIL_DOMAINS=""
 BEDROCK_REGION="us-east-1"
+MAX_MESSAGES_IN_CONTEXT="20"
 CDK_JSON_OVERRIDE="{}"
 REPO_URL="https://github.com/tuanna912/bedrock-chat.git"
 VERSION="develop"
@@ -60,6 +61,7 @@ while [[ "$#" -gt 0 ]]; do
         --ipv6-ranges) IPV6_RANGES="$2"; shift ;;
         --bedrock-region) BEDROCK_REGION="$2"; shift ;;
         --allowed-signup-email-domains) ALLOWED_SIGN_UP_EMAIL_DOMAINS="$2"; shift ;;
+        --max-messages-in-context) MAX_MESSAGES_IN_CONTEXT="$2"; shift ;;
         --cdk-json-override) CDK_JSON_OVERRIDE="$2"; shift ;;
         --repo-url) REPO_URL="$2"; shift ;;
         --version) VERSION="$2"; shift ;;
@@ -91,6 +93,7 @@ aws cloudformation deploy \
     Ipv6Ranges="$IPV6_RANGES" \
     AllowedSignUpEmailDomains="$ALLOWED_SIGN_UP_EMAIL_DOMAINS" \
     BedrockRegion="$BEDROCK_REGION" \
+    MaxMessagesInContext="$MAX_MESSAGES_IN_CONTEXT" \
     CdkJsonOverride="$CDK_JSON_OVERRIDE" \
     RepoUrl="$REPO_URL" \
     Version="$VERSION"

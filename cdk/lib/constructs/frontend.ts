@@ -195,6 +195,11 @@ export class Frontend extends Construct {
   }) {
     const region = Stack.of(auth.userPool).region;
     const cognitoDomain = `${userPoolDomainPrefix}.auth.${region}.amazoncognito.com/`;
+    const stack = Stack.of(this);
+    const enableSignup = stack.node.tryGetContext('enableSignup') ?? true;
+    const enableForgotPassword = stack.node.tryGetContext('enableForgotPassword') ?? true;
+    const logoUrl = stack.node.tryGetContext('logoUrl') ?? '/logo-svg.svg';
+
     const buildEnvProps = (() => {
       const defaultProps = {
         VITE_APP_API_ENDPOINT: backendApiEndpoint,
@@ -203,6 +208,9 @@ export class Frontend extends Construct {
         VITE_APP_USER_POOL_CLIENT_ID: auth.client.userPoolClientId,
         VITE_APP_REGION: region,
         VITE_APP_USE_STREAMING: "true",
+        VITE_APP_ENABLE_SIGNUP: enableSignup.toString(),
+        VITE_APP_ENABLE_FORGOT_PASSWORD: enableForgotPassword.toString(),
+        VITE_APP_LOGO_URL: logoUrl,
       };
 
       if (!idp.isExist()) return defaultProps;

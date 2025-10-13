@@ -268,6 +268,7 @@ export class Api extends Construct {
           ? JSON.stringify(props.globalAvailableModels)
           : "[]",
         OPENSEARCH_DOMAIN_ENDPOINT: props.openSearchEndpoint || "",
+        MAX_MESSAGES_IN_CONTEXT: process.env.MAX_MESSAGES_IN_CONTEXT || "20",
         AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
         PORT: "8000",
       },
