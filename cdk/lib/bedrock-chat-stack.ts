@@ -56,6 +56,7 @@ export interface BedrockChatStackProps extends StackProps {
   readonly hostedZoneId?: string;
   readonly devAccessIamRoleArn?: string;
   readonly allowedCountries?: string[];
+  readonly memoryCompressionThreshold?: number;
 }
 
 export class BedrockChatStack extends cdk.Stack {
@@ -224,6 +225,7 @@ export class BedrockChatStack extends cdk.Stack {
       enableLambdaSnapStart: props.enableLambdaSnapStart,
       openSearchEndpoint: botStore?.openSearchEndpoint,
       globalAvailableModels: props.globalAvailableModels,
+      memoryCompressionThreshold: props.memoryCompressionThreshold,
     });
     props.documentBucket.grantReadWrite(backendApi.handler);
     // Add permissions to API handler for BotStore

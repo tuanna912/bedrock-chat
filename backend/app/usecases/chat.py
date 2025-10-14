@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Callable, Dict
 from ulid import ULID
 from app.repositories.models.conversation import TextContentModel
@@ -63,6 +64,12 @@ from ulid import ULID
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# ============================================================================
+# Memory Compression Configuration
+# ============================================================================
+MEMORY_COMPRESSION_THRESHOLD = int(os.environ.get("MEMORY_COMPRESSION_THRESHOLD", "10"))
+logger.info(f"[MEMORY_CONFIG] Memory compression threshold set to: {MEMORY_COMPRESSION_THRESHOLD} messages")
 
 
 def prepare_conversation(
@@ -357,12 +364,12 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     
     logger.info(f"[MEMORY_COMPRESSION] Pending messages to process: {pending_messages}")
     
-    if pending_messages < 10:
-        logger.info(f"[MEMORY_COMPRESSION] Only {pending_messages} pending messages, threshold is 10. Skipping compression")
+    if pending_messages < MEMORY_COMPRESSION_THRESHOLD:
+        logger.info(f"[MEMORY_COMPRESSION] Only {pending_messages} pending messages, threshold is {MEMORY_COMPRESSION_THRESHOLD}. Skipping compression")
         logger.info(f"[MEMORY_COMPRESSION] ========== Memory Compression Process Completed (No Action) ==========")
         return memory
     
-    logger.info(f"[MEMORY_COMPRESSION] Threshold met! Processing compression for {pending_messages} pending messages")
+    logger.info(f"[MEMORY_COMPRESSION] Threshold met! Processing compression for {pending_messages} pending messages (threshold: {MEMORY_COMPRESSION_THRESHOLD})")
     
     # Add new messages as Level 0 contexts
     logger.info(f"[MEMORY_COMPRESSION] Step 1: Adding new messages as Level 0 contexts")
@@ -416,15 +423,15 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     current_level = 0
     compression_rounds = 0
     
-    while memory.should_compress_level(current_level):
+    while memory.should_compress_level(current_level, threshold=MEMORY_COMPRESSION_THRESHOLD):
         compression_rounds += 1
         level_context_count = len(memory.get_level_contexts(current_level))
-        logger.info(f"[MEMORY_COMPRESSION] Compression Round {compression_rounds}: Level {current_level} has {level_context_count} contexts (threshold: 10)")
+        logger.info(f"[MEMORY_COMPRESSION] Compression Round {compression_rounds}: Level {current_level} has {level_context_count} contexts (threshold: {MEMORY_COMPRESSION_THRESHOLD})")
         
         level_contexts = memory.get_level_contexts(current_level)
-        contexts_to_compress = level_contexts[:10]
+        contexts_to_compress = level_contexts[:MEMORY_COMPRESSION_THRESHOLD]
         
-        logger.info(f"[MEMORY_COMPRESSION] Compressing 10 Level {current_level} contexts → 1 Level {current_level+1} context")
+        logger.info(f"[MEMORY_COMPRESSION] Compressing {MEMORY_COMPRESSION_THRESHOLD} Level {current_level} contexts → 1 Level {current_level+1} context")
         
         # Compress these 10 contexts into 1 higher-level context
         compressed = compress_contexts_with_bedrock(
@@ -437,9 +444,9 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
         logger.info(f"[MEMORY_COMPRESSION] Successfully added compressed context to Level {current_level+1}")
         
         # Remove compressed contexts from current level
-        memory.contexts_by_level[current_level] = level_contexts[10:]
+        memory.contexts_by_level[current_level] = level_contexts[MEMORY_COMPRESSION_THRESHOLD:]
         remaining_contexts = len(memory.contexts_by_level[current_level])
-        logger.info(f"[MEMORY_COMPRESSION] Removed 10 compressed contexts from Level {current_level}. Remaining: {remaining_contexts}")
+        logger.info(f"[MEMORY_COMPRESSION] Removed {MEMORY_COMPRESSION_THRESHOLD} compressed contexts from Level {current_level}. Remaining: {remaining_contexts}")
         
         # Move to next level
         current_level += 1

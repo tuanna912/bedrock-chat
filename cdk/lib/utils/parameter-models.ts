@@ -114,6 +114,10 @@ const BedrockChatParametersSchema = BaseParametersSchema.extend({
   // If not configured (empty array), all models are available
   globalAvailableModels: z.array(z.string()).default([]),
 
+  // Memory compression configuration
+  // Number of messages needed to trigger memory compression (default: 10)
+  memoryCompressionThreshold: z.number().int().min(1).max(100).default(10),
+
   // debug parameter
   devAccessIamRoleArn: z.string().default("")
 });

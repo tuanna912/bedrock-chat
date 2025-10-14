@@ -829,9 +829,11 @@ class ConversationMemoryModel(BaseModel):
     
     Structure:
     - Level 0: Original messages (1 context = 1 message)
-    - Level 1: Compressed summaries (1 context = 10 Level 0 contexts)
-    - Level 2: Higher-level summaries (1 context = 10 Level 1 contexts)
+    - Level 1: Compressed summaries (1 context = N Level 0 contexts, where N is configurable)
+    - Level 2: Higher-level summaries (1 context = N Level 1 contexts)
     - And so on...
+    
+    Note: N is configurable via MEMORY_COMPRESSION_THRESHOLD environment variable (default: 10)
     """
     conversation_id: str
     contexts_by_level: dict[int, list[CompressedContextModel]] = Field(default_factory=dict)
@@ -853,9 +855,18 @@ class ConversationMemoryModel(BaseModel):
         logger.debug(f"[MEMORY_MODEL] get_level_contexts({level}): returning {len(contexts)} contexts")
         return contexts
     
-    def should_compress_level(self, level: int) -> bool:
-        """Check if a level has 10+ contexts and should be compressed"""
+    def should_compress_level(self, level: int, threshold: int = 10) -> bool:
+        """
+        Check if a level has enough contexts and should be compressed
+        
+        Args:
+            level: The level to check
+            threshold: Number of contexts needed to trigger compression (default: 10)
+        
+        Returns:
+            True if level has >= threshold contexts
+        """
         context_count = len(self.get_level_contexts(level))
-        should_compress = context_count >= 10
-        logger.info(f"[MEMORY_MODEL] should_compress_level({level}): {context_count} contexts, should_compress={should_compress}")
+        should_compress = context_count >= threshold
+        logger.info(f"[MEMORY_MODEL] should_compress_level({level}): {context_count} contexts, threshold={threshold}, should_compress={should_compress}")
         return should_compress
