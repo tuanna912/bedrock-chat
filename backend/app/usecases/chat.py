@@ -264,7 +264,7 @@ Provide a consolidated summary (max 300 tokens) that captures the overall flow a
             modelId="anthropic.claude-3-5-sonnet-20240620-v1:0",
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 400,
+                "max_tokens": 1500,
                 "temperature": 0.3,
                 "messages": [{
                     "role": "user",
