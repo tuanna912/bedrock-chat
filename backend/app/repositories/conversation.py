@@ -486,7 +486,9 @@ def store_conversation_memory(user_id: str, memory: "ConversationMemoryModel") -
     """Store compressed memory contexts in DynamoDB"""
     from app.repositories.models.conversation import ConversationMemoryModel
     
-    logger.info(f"Storing conversation memory: {memory.conversation_id}")
+    logger.info(f"[MEMORY_STORE] Storing conversation memory: conversation_id={memory.conversation_id}, user_id={user_id}")
+    logger.info(f"[MEMORY_STORE] Memory details: total_message_count={memory.total_message_count}")
+    
     table = get_conversation_table_client(user_id)
     
     # Serialize contexts by level
@@ -494,6 +496,15 @@ def store_conversation_memory(user_id: str, memory: "ConversationMemoryModel") -
         str(level): [ctx.model_dump() for ctx in contexts]
         for level, contexts in memory.contexts_by_level.items()
     }
+    
+    # Log details about each level
+    for level, contexts in memory.contexts_by_level.items():
+        logger.info(f"[MEMORY_STORE] Level {level}: {len(contexts)} contexts")
+        for i, ctx in enumerate(contexts):
+            logger.info(f"[MEMORY_STORE]   Context {i+1}: context_id={ctx.context_id}, message_index={ctx.message_index}, message_count={ctx.message_count}")
+    
+    serialized_size = len(json.dumps(contexts_data).encode('utf-8'))
+    logger.info(f"[MEMORY_STORE] Serialized contexts size: {serialized_size} bytes")
     
     item = {
         "PK": user_id,
@@ -504,8 +515,12 @@ def store_conversation_memory(user_id: str, memory: "ConversationMemoryModel") -
         "LastCompressionTime": decimal(memory.last_compression_time or 0),
     }
     
+    logger.info(f"[MEMORY_STORE] Writing to DynamoDB with PK={user_id}, SK={compose_memory_sk(user_id, memory.conversation_id)}")
+    
     response = table.put_item(Item=item)
-    logger.info(f"Stored memory for conversation {memory.conversation_id}")
+    logger.info(f"[MEMORY_STORE] Successfully stored memory for conversation {memory.conversation_id}")
+    logger.info(f"[MEMORY_STORE] DynamoDB response metadata: {response.get('ResponseMetadata', {})}")
+    
     return response
 
 
@@ -513,10 +528,12 @@ def find_conversation_memory(user_id: str, conversation_id: str):
     """Find compressed memory from DynamoDB. Returns ConversationMemoryModel or None"""
     from app.repositories.models.conversation import ConversationMemoryModel, CompressedContextModel
     
-    logger.info(f"Finding conversation memory: {conversation_id}")
+    logger.info(f"[MEMORY_FIND] Finding conversation memory: conversation_id={conversation_id}, user_id={user_id}")
     table = get_conversation_table_client(user_id)
     
     try:
+        logger.info(f"[MEMORY_FIND] Querying DynamoDB with PK={user_id}, SK={compose_memory_sk(user_id, conversation_id)}")
+        
         response = table.get_item(
             Key={
                 "PK": user_id,
@@ -525,12 +542,20 @@ def find_conversation_memory(user_id: str, conversation_id: str):
         )
         
         if "Item" not in response:
+            logger.info(f"[MEMORY_FIND] No memory found in DynamoDB for conversation {conversation_id}")
             return None
         
         item = response["Item"]
+        logger.info(f"[MEMORY_FIND] Memory item found in DynamoDB")
+        logger.info(f"[MEMORY_FIND] Raw item keys: {list(item.keys())}")
         
         # Deserialize contexts by level
-        contexts_data = json.loads(item.get("ContextsByLevel", "{}"))
+        contexts_json = item.get("ContextsByLevel", "{}")
+        logger.info(f"[MEMORY_FIND] ContextsByLevel JSON size: {len(contexts_json)} bytes")
+        
+        contexts_data = json.loads(contexts_json)
+        logger.info(f"[MEMORY_FIND] Deserialized {len(contexts_data)} levels")
+        
         contexts_by_level = {
             int(level): [
                 CompressedContextModel.model_validate(ctx_data)
@@ -539,6 +564,12 @@ def find_conversation_memory(user_id: str, conversation_id: str):
             for level, contexts in contexts_data.items()
         }
         
+        # Log details about retrieved contexts
+        for level, contexts in contexts_by_level.items():
+            logger.info(f"[MEMORY_FIND] Level {level}: {len(contexts)} contexts retrieved")
+            for i, ctx in enumerate(contexts):
+                logger.info(f"[MEMORY_FIND]   Context {i+1}: context_id={ctx.context_id}, message_index={ctx.message_index}, message_count={ctx.message_count}")
+        
         memory = ConversationMemoryModel(
             conversation_id=item["ConversationId"],
             contexts_by_level=contexts_by_level,
@@ -546,8 +577,13 @@ def find_conversation_memory(user_id: str, conversation_id: str):
             last_compression_time=float(item.get("LastCompressionTime", 0)) if item.get("LastCompressionTime") else None,
         )
         
+        logger.info(f"[MEMORY_FIND] Successfully loaded memory: total_message_count={memory.total_message_count}")
+        if memory.last_compression_time:
+            logger.info(f"[MEMORY_FIND] Last compression time: {memory.last_compression_time}")
+        
         return memory
         
     except Exception as e:
-        logger.error(f"Error finding conversation memory: {e}")
+        logger.error(f"[MEMORY_FIND] ERROR - Failed to find conversation memory: {str(e)}", exc_info=True)
+        logger.error(f"[MEMORY_FIND] ERROR - conversation_id={conversation_id}, user_id={user_id}")
         return None

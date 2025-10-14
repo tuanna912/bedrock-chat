@@ -840,14 +840,22 @@ class ConversationMemoryModel(BaseModel):
     
     def add_context(self, context: CompressedContextModel) -> None:
         """Add a context to the appropriate level"""
+        logger.info(f"[MEMORY_MODEL] Adding context to level {context.level}: context_id={context.context_id}")
         if context.level not in self.contexts_by_level:
+            logger.info(f"[MEMORY_MODEL] Creating new level {context.level}")
             self.contexts_by_level[context.level] = []
         self.contexts_by_level[context.level].append(context)
+        logger.info(f"[MEMORY_MODEL] Level {context.level} now has {len(self.contexts_by_level[context.level])} contexts")
     
     def get_level_contexts(self, level: int) -> list[CompressedContextModel]:
         """Get all contexts at a specific level"""
-        return self.contexts_by_level.get(level, [])
+        contexts = self.contexts_by_level.get(level, [])
+        logger.debug(f"[MEMORY_MODEL] get_level_contexts({level}): returning {len(contexts)} contexts")
+        return contexts
     
     def should_compress_level(self, level: int) -> bool:
         """Check if a level has 10+ contexts and should be compressed"""
-        return len(self.get_level_contexts(level)) >= 10
+        context_count = len(self.get_level_contexts(level))
+        should_compress = context_count >= 10
+        logger.info(f"[MEMORY_MODEL] should_compress_level({level}): {context_count} contexts, should_compress={should_compress}")
+        return should_compress

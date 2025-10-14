@@ -28,14 +28,19 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message
 
+# Import and initialize CloudWatch logging
+from app.logging_setup import initialize_logging
+
+# Initialize logging first (before any other logging happens)
+initialize_logging()
 
 CORS_ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "*")
 PUBLISHED_API_ID = os.environ.get("PUBLISHED_API_ID", None)
 
 is_published_api = PUBLISHED_API_ID is not None
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s - %(message)s")
 logger = logging.getLogger(__name__)
+logger.info("[APP] Application starting...")
 
 if not is_published_api:
     openapi_tags = [
