@@ -801,3 +801,53 @@ class RelatedDocumentModel(BaseModel):
             source_link=self.get_source_link_for_schema(),
             page_number=self.page_number,
         )
+
+
+# ============================================================================
+# Memory Compression Models
+# ============================================================================
+
+
+class CompressedContextModel(BaseModel):
+    """
+    Represents a compressed context (summary of messages).
+    Each context can be:
+    - 1 message (original, level=0)
+    - Summary of 10 contexts (level=1, 2, 3, ...)
+    """
+    context_id: str
+    level: int = Field(ge=0, description="0=original message, 1+=compressed summary")
+    message_index: int = Field(ge=0, description="Index of this message/context in conversation")
+    summary: str = Field(description="Content or summary of the message/contexts")
+    message_count: int = Field(ge=1, description="Number of original messages this represents")
+    create_time: float
+
+
+class ConversationMemoryModel(BaseModel):
+    """
+    Manages compressed memory for a conversation.
+    
+    Structure:
+    - Level 0: Original messages (1 context = 1 message)
+    - Level 1: Compressed summaries (1 context = 10 Level 0 contexts)
+    - Level 2: Higher-level summaries (1 context = 10 Level 1 contexts)
+    - And so on...
+    """
+    conversation_id: str
+    contexts_by_level: dict[int, list[CompressedContextModel]] = Field(default_factory=dict)
+    total_message_count: int = Field(default=0, ge=0)
+    last_compression_time: float | None = None
+    
+    def add_context(self, context: CompressedContextModel) -> None:
+        """Add a context to the appropriate level"""
+        if context.level not in self.contexts_by_level:
+            self.contexts_by_level[context.level] = []
+        self.contexts_by_level[context.level].append(context)
+    
+    def get_level_contexts(self, level: int) -> list[CompressedContextModel]:
+        """Get all contexts at a specific level"""
+        return self.contexts_by_level.get(level, [])
+    
+    def should_compress_level(self, level: int) -> bool:
+        """Check if a level has 10+ contexts and should be compressed"""
+        return len(self.get_level_contexts(level)) >= 10

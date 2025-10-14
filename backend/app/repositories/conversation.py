@@ -17,6 +17,8 @@ from app.repositories.common import (
 from app.repositories.models.conversation import (
     ConversationMeta,
     ConversationModel,
+    ConversationMemoryModel,
+    CompressedContextModel,
     FeedbackModel,
     MessageModel,
     RelatedDocumentModel,
@@ -469,3 +471,83 @@ def delete_related_documents(user_id: str, conversation_id: str | None = None):
                     "SK": sort_key,
                 },
             )
+
+
+# ============================================================================
+# Memory Compression Functions
+# ============================================================================
+
+def compose_memory_sk(user_id: str, conversation_id: str) -> str:
+    """Compose sort key for conversation memory"""
+    return f"{user_id}#MEMORY#{conversation_id}"
+
+
+def store_conversation_memory(user_id: str, memory: "ConversationMemoryModel") -> dict:
+    """Store compressed memory contexts in DynamoDB"""
+    from app.repositories.models.conversation import ConversationMemoryModel
+    
+    logger.info(f"Storing conversation memory: {memory.conversation_id}")
+    table = get_conversation_table_client(user_id)
+    
+    # Serialize contexts by level
+    contexts_data = {
+        str(level): [ctx.model_dump() for ctx in contexts]
+        for level, contexts in memory.contexts_by_level.items()
+    }
+    
+    item = {
+        "PK": user_id,
+        "SK": compose_memory_sk(user_id, memory.conversation_id),
+        "ConversationId": memory.conversation_id,
+        "ContextsByLevel": json.dumps(contexts_data),
+        "TotalMessageCount": memory.total_message_count,
+        "LastCompressionTime": decimal(memory.last_compression_time or 0),
+    }
+    
+    response = table.put_item(Item=item)
+    logger.info(f"Stored memory for conversation {memory.conversation_id}")
+    return response
+
+
+def find_conversation_memory(user_id: str, conversation_id: str):
+    """Find compressed memory from DynamoDB. Returns ConversationMemoryModel or None"""
+    from app.repositories.models.conversation import ConversationMemoryModel, CompressedContextModel
+    
+    logger.info(f"Finding conversation memory: {conversation_id}")
+    table = get_conversation_table_client(user_id)
+    
+    try:
+        response = table.get_item(
+            Key={
+                "PK": user_id,
+                "SK": compose_memory_sk(user_id, conversation_id)
+            }
+        )
+        
+        if "Item" not in response:
+            return None
+        
+        item = response["Item"]
+        
+        # Deserialize contexts by level
+        contexts_data = json.loads(item.get("ContextsByLevel", "{}"))
+        contexts_by_level = {
+            int(level): [
+                CompressedContextModel.model_validate(ctx_data)
+                for ctx_data in contexts
+            ]
+            for level, contexts in contexts_data.items()
+        }
+        
+        memory = ConversationMemoryModel(
+            conversation_id=item["ConversationId"],
+            contexts_by_level=contexts_by_level,
+            total_message_count=int(item.get("TotalMessageCount", 0)),
+            last_compression_time=float(item.get("LastCompressionTime", 0)) if item.get("LastCompressionTime") else None,
+        )
+        
+        return memory
+        
+    except Exception as e:
+        logger.error(f"Error finding conversation memory: {e}")
+        return None

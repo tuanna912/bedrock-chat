@@ -1,6 +1,7 @@
 import logging
 from typing import Callable, Dict
-
+from ulid import ULID
+from app.repositories.models.conversation import TextContentModel
 from app.agents.tools.agent_tool import AgentTool, ToolRunResult
 from app.agents.tools.knowledge import create_knowledge_tool
 from app.agents.utils import get_tools
@@ -13,7 +14,9 @@ from app.prompt import build_rag_prompt, get_prompt_to_cite_tool_results
 from app.repositories.conversation import (
     RecordNotFoundError,
     find_conversation_by_id,
+    find_conversation_memory,
     store_conversation,
+    store_conversation_memory,
     store_related_documents,
 )
 from app.repositories.conversation_search import find_conversations_by_query
@@ -208,6 +211,238 @@ def trace_to_root(
     return result[::-1]
 
 
+# ============================================================================
+# Memory Compression Helpers
+# ============================================================================
+
+def compress_contexts_with_bedrock(contexts_to_compress: list, level: int, conversation_id: str):
+    """
+    Use Claude 3.5 Sonnet to summarize contexts.
+    
+    Args:
+        contexts_to_compress: List of contexts (messages or summaries)
+        level: Target compression level
+        conversation_id: Conversation ID for logging
+    
+    Returns:
+        CompressedContextModel with the summary
+    """
+    from app.repositories.models.conversation import CompressedContextModel
+    from app.bedrock import get_bedrock_runtime_client
+    import json
+    
+    logger.info(f"Compressing {len(contexts_to_compress)} contexts to level {level+1}")
+    
+    # Build prompt based on what we're compressing
+    if level == 0:
+        # Compressing original messages (Level 0 → Level 1)
+        messages_text = "\n\n".join([
+            f"[Message {ctx.message_index}]: {ctx.summary}"
+            for ctx in contexts_to_compress
+        ])
+        prompt = f"""Summarize the following conversation messages into a concise summary that preserves key information:
+
+{messages_text}
+
+Provide a clear, concise summary (max 300 tokens) that captures the main points and context."""
+    else:
+        # Compressing summaries (Level N → Level N+1)
+        summaries_text = "\n\n".join([
+            f"[Summary {i+1}]: {ctx.summary}"
+            for i, ctx in enumerate(contexts_to_compress)
+        ])
+        prompt = f"""Consolidate the following conversation summaries into a higher-level summary:
+
+{summaries_text}
+
+Provide a consolidated summary (max 300 tokens) that captures the overall flow and key information."""
+    
+    # Call Bedrock
+    try:
+        client = get_bedrock_runtime_client()
+        response = client.invoke_model(
+            modelId="anthropic.claude-3-5-sonnet-20240620-v1:0",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 400,
+                "temperature": 0.3,
+                "messages": [{
+                    "role": "user",
+                    "content": prompt
+                }]
+            }),
+            contentType="application/json",
+            accept="application/json"
+        )
+        
+        response_body = json.loads(response["body"].read())
+        summary = response_body["content"][0]["text"].strip()
+        
+        logger.info(f"Generated summary: {len(summary)} chars")
+        
+        # Create compressed context
+        start_idx = contexts_to_compress[0].message_index
+        end_idx = contexts_to_compress[-1].message_index
+        total_messages = sum(ctx.message_count for ctx in contexts_to_compress)
+        
+        compressed = CompressedContextModel(
+            context_id=str(ULID()),
+            level=level + 1,
+            message_index=start_idx,
+            summary=summary,
+            message_count=total_messages,
+            create_time=get_current_time()
+        )
+        
+        return compressed
+        
+    except Exception as e:
+        logger.error(f"Error compressing contexts: {e}", exc_info=True)
+        raise
+
+
+def process_memory_compression(user_id: str, conversation: ConversationModel):
+    """
+    Process memory compression for conversation.
+    
+    Logic:
+    - Each message = 1 Level 0 context
+    - Every 10 Level 0 contexts → compress to 1 Level 1 context
+    - Every 10 Level N contexts → compress to 1 Level N+1 context (recursive)
+    """
+    from app.repositories.models.conversation import ConversationMemoryModel, CompressedContextModel
+    
+    # Get or create memory
+    memory = find_conversation_memory(user_id, conversation.id)
+    if memory is None:
+        memory = ConversationMemoryModel(
+            conversation_id=conversation.id,
+            contexts_by_level={},
+            total_message_count=0,
+            last_compression_time=None
+        )
+    
+    # Count current messages in conversation
+    message_count = 0
+    for msg_id, msg in conversation.message_map.items():
+        if msg.role in ["user", "assistant"]:
+            message_count += 1
+    
+    # Check if we need compression
+    pending_messages = message_count - memory.total_message_count
+    
+    if pending_messages < 10:
+        logger.info(f"Only {pending_messages} pending messages, skipping compression")
+        return memory
+    
+    logger.info(f"Processing compression: {pending_messages} pending messages")
+    
+    # Add new messages as Level 0 contexts
+    messages_list = []
+    for msg_id, msg in conversation.message_map.items():
+        if msg.role in ["user", "assistant"]:
+            messages_list.append((msg_id, msg))
+    
+    # Sort by create_time
+    messages_list.sort(key=lambda x: x[1].create_time)
+    
+    # Get messages that need to be added as Level 0 contexts
+    new_messages = messages_list[memory.total_message_count:]
+    
+    for idx, (msg_id, msg) in enumerate(new_messages):
+        # Extract text content
+
+        text_content = ""
+        for content in msg.content:
+            if isinstance(content, TextContentModel):
+                text_content += content.body
+        
+        if not text_content:
+            text_content = f"[{msg.role} message]"
+        
+        # Create Level 0 context
+        ctx = CompressedContextModel(
+            context_id=str(ULID()),
+            level=0,
+            message_index=memory.total_message_count + idx,
+            summary=f"{msg.role.upper()}: {text_content[:500]}",  # Truncate if too long
+            message_count=1,
+            create_time=msg.create_time
+        )
+        memory.add_context(ctx)
+    
+    memory.total_message_count = message_count
+    memory.last_compression_time = get_current_time()
+    
+    # Recursive compression for all levels
+    current_level = 0
+    while memory.should_compress_level(current_level):
+        logger.info(f"Level {current_level} has {len(memory.get_level_contexts(current_level))} contexts, compressing...")
+        
+        level_contexts = memory.get_level_contexts(current_level)
+        contexts_to_compress = level_contexts[:10]
+        
+        # Compress these 10 contexts into 1 higher-level context
+        compressed = compress_contexts_with_bedrock(
+            contexts_to_compress=contexts_to_compress,
+            level=current_level,
+            conversation_id=conversation.id
+        )
+        
+        memory.add_context(compressed)
+        
+        # Remove compressed contexts from current level
+        memory.contexts_by_level[current_level] = level_contexts[10:]
+        
+        # Move to next level
+        current_level += 1
+    
+    # Store updated memory
+    store_conversation_memory(user_id, memory)
+    logger.info(f"Compression complete. Levels: {list(memory.contexts_by_level.keys())}")
+    
+    return memory
+
+
+def build_context_from_memory(user_id: str, conversation: ConversationModel) -> str:
+    """
+    Build context string from compressed memory to prepend to messages.
+    
+    Returns:
+        Context string to add to prompt
+    """
+    memory = find_conversation_memory(user_id, conversation.id)
+    
+    if memory is None or not memory.contexts_by_level:
+        return ""
+    
+    context_parts = ["=== CONVERSATION HISTORY ===\n"]
+    
+    # Get all contexts from all levels, sorted by message_index
+    all_contexts = []
+    for level, contexts in memory.contexts_by_level.items():
+        all_contexts.extend(contexts)
+    
+    all_contexts.sort(key=lambda ctx: ctx.message_index)
+    
+    # Add contexts from all levels
+    for ctx in all_contexts:
+        if ctx.level == 0:
+            # Include recent uncompressed messages
+            context_parts.append(f"\n[Message {ctx.message_index}]:")
+            context_parts.append(ctx.summary)
+        else:
+            # Compressed summaries
+            context_parts.append(f"\n[Messages {ctx.message_index}-{ctx.message_index + ctx.message_count - 1} Summary]:")
+            context_parts.append(ctx.summary)
+    
+    if len(context_parts) == 1:  # Only header, no contexts
+        return ""
+    
+    context_parts.append("\n=== END HISTORY ===\n")
+    return "\n".join(context_parts)
+
+
 def chat(
     user: User,
     chat_input: ChatInput,
@@ -218,6 +453,20 @@ def chat(
     on_reasoning: Callable[[str], None] | None = None,
 ) -> tuple[ConversationModel, MessageModel]:
     user_msg_id, conversation, bot = prepare_conversation(user, chat_input)
+
+    # Process memory compression after adding user message
+    try:
+        memory = process_memory_compression(user.id, conversation)
+        logger.info(f"Memory compression processed for conversation {conversation.id}")
+        
+        # Build context from compressed memory
+        compressed_context = build_context_from_memory(user.id, conversation)
+        if compressed_context:
+            logger.info(f"Adding {len(compressed_context)} chars of compressed context to prompt")
+            # Context will be prepended to system prompt later
+    except Exception as e:
+        logger.warning(f"Memory compression failed, continuing without compression: {e}")
+        compressed_context = ""
 
     # # Set tools only when tooluse is supported
     tools: Dict[str, AgentTool] = {}
@@ -236,6 +485,10 @@ def chat(
         if "instruction" in message_map
         else []
     )
+
+    # Add compressed context to instructions
+    if compressed_context:
+        instructions.append(compressed_context)
 
     related_documents: list[RelatedDocumentModel] = []
     search_results: list[SearchResult] = []
