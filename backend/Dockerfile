@@ -14,7 +14,8 @@ COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.7.0 /lambda-adapter /opt
 
 WORKDIR /backend
 
-COPY ./pyproject.toml ./poetry.lock ./
+# Copy only pyproject.toml first
+COPY ./pyproject.toml ./
 
 ENV POETRY_REQUESTS_TIMEOUT=10800
 
@@ -25,7 +26,7 @@ RUN python -m pip install --upgrade pip && \
 # Configure poetry
 RUN poetry config virtualenvs.create false
 
-# Update lock file to include watchtower and sync with pyproject.toml
+# Generate lock file from pyproject.toml
 RUN poetry lock --no-update
 
 # Install dependencies
