@@ -27,7 +27,7 @@ RUN python -m pip install --upgrade pip && \
 RUN poetry config virtualenvs.create false
 
 # Generate lock file from pyproject.toml
-RUN poetry lock --no-update
+RUN poetry lock
 
 # Install dependencies
 RUN poetry install --no-interaction --no-ansi --only main
