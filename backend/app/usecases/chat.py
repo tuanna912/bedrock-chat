@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from typing import Callable, Dict
@@ -9,6 +10,7 @@ from app.agents.utils import get_tools
 from app.bedrock import (
     call_converse_api,
     compose_args_for_converse_api,
+    get_bedrock_runtime_client,
     is_tooluse_supported,
 )
 from app.prompt import build_rag_prompt, get_prompt_to_cite_tool_results
@@ -23,6 +25,8 @@ from app.repositories.conversation import (
 from app.repositories.conversation_search import find_conversations_by_query
 from app.repositories.custom_bot import alias_exists, store_alias
 from app.repositories.models.conversation import (
+    CompressedContextModel,
+    ConversationMemoryModel,
     ConversationModel,
     MessageModel,
     ReasoningContentModel,
@@ -60,7 +64,6 @@ from app.vector_search import (
     search_result_to_related_document,
     to_guardrails_grounding_source,
 )
-from ulid import ULID
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -234,10 +237,6 @@ def compress_contexts_with_bedrock(contexts_to_compress: list, level: int, conve
     Returns:
         CompressedContextModel with the summary
     """
-    from app.repositories.models.conversation import CompressedContextModel
-    from app.bedrock import get_bedrock_runtime_client
-    import json
-    
     logger.info(f"[MEMORY_COMPRESSION] Starting compression for conversation_id={conversation_id}")
     logger.info(f"[MEMORY_COMPRESSION] Compressing {len(contexts_to_compress)} contexts from level {level} to level {level+1}")
     logger.info(f"[MEMORY_COMPRESSION] Context IDs: {[ctx.context_id for ctx in contexts_to_compress]}")
@@ -330,8 +329,6 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     - Every 10 Level 0 contexts → compress to 1 Level 1 context
     - Every 10 Level N contexts → compress to 1 Level N+1 context (recursive)
     """
-    from app.repositories.models.conversation import ConversationMemoryModel, CompressedContextModel
-    
     logger.info(f"[MEMORY_COMPRESSION] ========== Starting Memory Compression Process ==========")
     logger.info(f"[MEMORY_COMPRESSION] user_id={user_id}, conversation_id={conversation.id}")
     

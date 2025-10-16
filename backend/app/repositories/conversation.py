@@ -482,10 +482,8 @@ def compose_memory_sk(user_id: str, conversation_id: str) -> str:
     return f"{user_id}#MEMORY#{conversation_id}"
 
 
-def store_conversation_memory(user_id: str, memory: "ConversationMemoryModel") -> dict:
+def store_conversation_memory(user_id: str, memory: ConversationMemoryModel) -> dict:
     """Store compressed memory contexts in DynamoDB"""
-    from app.repositories.models.conversation import ConversationMemoryModel
-    
     logger.info(f"[MEMORY_STORE] Storing conversation memory: conversation_id={memory.conversation_id}, user_id={user_id}")
     logger.info(f"[MEMORY_STORE] Memory details: total_message_count={memory.total_message_count}")
     
@@ -524,10 +522,8 @@ def store_conversation_memory(user_id: str, memory: "ConversationMemoryModel") -
     return response
 
 
-def find_conversation_memory(user_id: str, conversation_id: str):
+def find_conversation_memory(user_id: str, conversation_id: str) -> ConversationMemoryModel | None:
     """Find compressed memory from DynamoDB. Returns ConversationMemoryModel or None"""
-    from app.repositories.models.conversation import ConversationMemoryModel, CompressedContextModel
-    
     logger.info(f"[MEMORY_FIND] Finding conversation memory: conversation_id={conversation_id}, user_id={user_id}")
     table = get_conversation_table_client(user_id)
     
