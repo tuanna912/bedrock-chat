@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Fix Git Bash path conversion on Windows
+export MSYS_NO_PATHCONV=1
+
 echo "=== Deploying Bedrock Chat to AWS CloudShell ==="
 
 # Configuration
@@ -67,6 +70,7 @@ echo ""
 echo "Step 5: Getting latest logs..."
 echo "=========================================="
 
+# Get logs with path conversion disabled
 aws logs get-log-events --log-group-name "$LOG_GROUP" --log-stream-name "$LOG_STREAM" --profile $AWS_PROFILE --region $AWS_REGION --limit 100 --query 'events[-50:].message' --output json
 
 echo ""

@@ -232,7 +232,7 @@ export class Api extends Construct {
       index: "app/main.py",
       bundling: {
         assetExcludes: [...excludeDockerImage],
-        buildArgs: { 
+        buildArgs: {
           POETRY_VERSION: "1.8.3",
           PIP_NO_CACHE_DIR: "1"
         },

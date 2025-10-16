@@ -25,6 +25,7 @@ firecrawl-py = "^1.11.1"
 reretry = "^0.11.8"
 watchtower = "3.0.0"
 urllib3 = ">=1.26.19,<1.27"
+
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.15.0"
 black = "^24.8.0"

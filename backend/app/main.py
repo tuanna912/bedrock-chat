@@ -28,11 +28,12 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message
 
-# Import and initialize CloudWatch logging
-from app.logging_setup import initialize_logging
-
-# Initialize logging first (before any other logging happens)
-initialize_logging()
+# CloudWatch logging is automatically configured for Lambda
+# No need for custom logging setup in Lambda environment
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s'
+)
 
 CORS_ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "*")
 PUBLISHED_API_ID = os.environ.get("PUBLISHED_API_ID", None)
