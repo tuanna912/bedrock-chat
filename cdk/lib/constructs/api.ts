@@ -232,9 +232,12 @@ export class Api extends Construct {
       index: "app/main.py",
       bundling: {
         assetExcludes: [...excludeDockerImage],
-        buildArgs: { POETRY_VERSION: "1.8.3" },
+        buildArgs: { 
+          POETRY_VERSION: "1.8.3",
+          PIP_NO_CACHE_DIR: "1"
+        },
       },
-      runtime: Runtime.PYTHON_3_12,
+      runtime: Runtime.PYTHON_3_13,
       architecture: Architecture.X86_64,
       memorySize: 1024,
       timeout: Duration.minutes(15),
