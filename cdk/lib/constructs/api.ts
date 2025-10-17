@@ -236,6 +236,17 @@ export class Api extends Construct {
           POETRY_VERSION: "1.8.3",
           PIP_NO_CACHE_DIR: "1"
         },
+        commandHooks: {
+          beforeBundling(inputDir: string, outputDir: string): string[] {
+            return [];
+          },
+          afterBundling(inputDir: string, outputDir: string): string[] {
+            return [
+              `cp ${inputDir}/run.sh ${outputDir}/run.sh`,
+              `chmod +x ${outputDir}/run.sh`,
+            ];
+          },
+        },
       },
       runtime: Runtime.PYTHON_3_13,
       architecture: Architecture.X86_64,
