@@ -242,8 +242,10 @@ export class Api extends Construct {
           },
           afterBundling(inputDir: string, outputDir: string): string[] {
             return [
-              `cp ${inputDir}/run.sh ${outputDir}/run.sh`,
-              `chmod +x ${outputDir}/run.sh`,
+              `cp -v ${inputDir}/run.sh ${outputDir}/run.sh || true`,
+              `chmod +x ${outputDir}/run.sh || true`,
+              `cp -v ${inputDir}/run.py ${outputDir}/run.py || true`,
+              `ls -la ${outputDir}/ || true`,
             ];
           },
         },
@@ -283,13 +285,15 @@ export class Api extends Construct {
         OPENSEARCH_DOMAIN_ENDPOINT: props.openSearchEndpoint || "",
         MEMORY_COMPRESSION_THRESHOLD: props.memoryCompressionThreshold?.toString() || "10",
         AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
+        AWS_LWA_INVOKE_MODE: "response_stream",
+        READINESS_CHECK_PATH: "/health",
+        READINESS_CHECK_PORT: "8000",
         PORT: "8000",
       },
       role: handlerRole,
       logRetention: logs.RetentionDays.THREE_MONTHS,
-      snapStart: props.enableLambdaSnapStart
-        ? SnapStartConf.ON_PUBLISHED_VERSIONS
-        : undefined,
+      // SnapStart is not compatible with Lambda Web Adapter
+      snapStart: undefined,
       layers: [
         LayerVersion.fromLayerVersionArn(
           this,
@@ -300,11 +304,10 @@ export class Api extends Construct {
         ),
       ],
     });
-    // https://github.com/awslabs/aws-lambda-web-adapter/tree/main/examples/fastapi-zip
-    (handler.node.defaultChild as CfnResource).addPropertyOverride(
-      "Handler",
-      "run.sh"
-    );
+
+    // Override handler to use run.sh for Lambda Web Adapter
+    const cfnFunction = handler.node.defaultChild as CfnResource;
+    cfnFunction.addPropertyOverride("Handler", "run.sh");
 
     const api = new HttpApi(this, "Default", {
       description: `Main API for ${Stack.of(this).stackName}`,
@@ -326,7 +329,7 @@ export class Api extends Construct {
 
     const integration = new HttpLambdaIntegration(
       "Integration",
-      handler.currentVersion
+      handler
     );
     const authorizer = new HttpUserPoolAuthorizer(
       "Authorizer",
