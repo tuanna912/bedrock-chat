@@ -72,6 +72,7 @@ logger.setLevel(logging.INFO)
 # Memory Compression Configuration
 # ============================================================================
 MEMORY_COMPRESSION_THRESHOLD = int(os.environ.get("MEMORY_COMPRESSION_THRESHOLD", "10"))
+RECENT_MESSAGE_FLOOR = 4
 logger.info(f"[MEMORY_CONFIG] Memory compression threshold set to: {MEMORY_COMPRESSION_THRESHOLD} messages")
 
 
@@ -463,7 +464,11 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     return memory
 
 
-def build_context_from_memory(user_id: str, conversation: ConversationModel) -> str:
+def build_context_from_memory(
+    user_id: str,
+    conversation: ConversationModel,
+    prefetched_memory: ConversationMemoryModel | None = None,
+) -> str:
     """
     Build context string from compressed memory to prepend to messages.
     
@@ -472,7 +477,12 @@ def build_context_from_memory(user_id: str, conversation: ConversationModel) -> 
     """
     logger.info(f"[MEMORY_CONTEXT] Building context from memory for conversation_id={conversation.id}")
     
-    memory = find_conversation_memory(user_id, conversation.id)
+    memory = prefetched_memory
+    if memory is None:
+        logger.info(f"[MEMORY_CONTEXT] No prefetched memory provided. Fetching from DynamoDB.")
+        memory = find_conversation_memory(user_id, conversation.id)
+    else:
+        logger.info(f"[MEMORY_CONTEXT] Using prefetched memory object.")
     
     if memory is None or not memory.contexts_by_level:
         logger.info(f"[MEMORY_CONTEXT] No memory or contexts found. Returning empty context")
@@ -484,29 +494,33 @@ def build_context_from_memory(user_id: str, conversation: ConversationModel) -> 
     
     context_parts = ["=== CONVERSATION HISTORY ===\n"]
     
-    # Get all contexts from all levels, sorted by message_index
-    all_contexts = []
+    # Collect contexts for prompt, skipping raw Level 0 events (these remain in real messages)
+    contexts_for_prompt: list[CompressedContextModel] = []
+    skipped_level0 = 0
     for level, contexts in memory.contexts_by_level.items():
-        all_contexts.extend(contexts)
+        if level == 0:
+            skipped_level0 += len(contexts)
+            continue
+        contexts_for_prompt.extend(contexts)
     
-    all_contexts.sort(key=lambda ctx: ctx.message_index)
-    logger.info(f"[MEMORY_CONTEXT] Total contexts to include: {len(all_contexts)}")
+    if skipped_level0:
+        logger.info(f"[MEMORY_CONTEXT] Skipping {skipped_level0} Level 0 contexts; latest messages stay uncompressed in prompt")
+
+    if not contexts_for_prompt:
+        logger.info(f"[MEMORY_CONTEXT] No compressed contexts (level >=1) available. Returning empty context")
+        return ""
+
+    contexts_for_prompt.sort(key=lambda ctx: ctx.message_index)
+    logger.info(f"[MEMORY_CONTEXT] Total contexts to include: {len(contexts_for_prompt)}")
     
     # Add contexts from all levels
     context_count = 0
-    for ctx in all_contexts:
+    for ctx in contexts_for_prompt:
         context_count += 1
-        if ctx.level == 0:
-            # Include recent uncompressed messages
-            logger.info(f"[MEMORY_CONTEXT] Adding Level 0 context [{context_count}/{len(all_contexts)}]: message_index={ctx.message_index}")
-            context_parts.append(f"\n[Message {ctx.message_index}]:")
-            context_parts.append(ctx.summary)
-        else:
-            # Compressed summaries
-            msg_range = f"{ctx.message_index}-{ctx.message_index + ctx.message_count - 1}"
-            logger.info(f"[MEMORY_CONTEXT] Adding Level {ctx.level} summary [{context_count}/{len(all_contexts)}]: messages {msg_range}")
-            context_parts.append(f"\n[Messages {msg_range} Summary]:")
-            context_parts.append(ctx.summary)
+        msg_range = f"{ctx.message_index}-{ctx.message_index + ctx.message_count - 1}"
+        logger.info(f"[MEMORY_CONTEXT] Adding Level {ctx.level} summary [{context_count}/{len(contexts_for_prompt)}]: messages {msg_range}")
+        context_parts.append(f"\n[Messages {msg_range} Summary]:")
+        context_parts.append(ctx.summary)
     
     if len(context_parts) == 1:  # Only header, no contexts
         logger.info(f"[MEMORY_CONTEXT] No contexts added. Returning empty context")
@@ -517,6 +531,64 @@ def build_context_from_memory(user_id: str, conversation: ConversationModel) -> 
     logger.info(f"[MEMORY_CONTEXT] Context built successfully: {len(final_context)} characters")
     
     return final_context
+
+
+def prune_messages_with_memory(
+    messages: list[SimpleMessageModel],
+    memory: ConversationMemoryModel,
+) -> list[SimpleMessageModel]:
+    """
+    Remove older user/assistant messages from the prompt once they have been
+    summarized into higher-level contexts.
+    """
+    has_compressed_levels = any(
+        level > 0 and contexts for level, contexts in memory.contexts_by_level.items()
+    )
+    if not has_compressed_levels:
+        logger.info("[MEMORY_PROMPT] No compressed contexts available. Keeping full conversation history.")
+        return messages
+
+    user_like_indices = [
+        idx
+        for idx, message in enumerate(messages)
+        if message.role in {"user", "assistant"}
+    ]
+    if not user_like_indices:
+        logger.info("[MEMORY_PROMPT] No user/assistant messages detected in prompt. Skipping pruning.")
+        return messages
+
+    remaining_level0 = len(memory.get_level_contexts(0))
+    keep_recent_target = max(remaining_level0, RECENT_MESSAGE_FLOOR)
+    keep_recent_target = min(keep_recent_target, MEMORY_COMPRESSION_THRESHOLD)
+    keep_recent_target = min(keep_recent_target, len(user_like_indices))
+
+    drop_count = len(user_like_indices) - keep_recent_target
+    if drop_count <= 0:
+        logger.info(
+            "[MEMORY_PROMPT] Prompt already within recent message window. Nothing to prune."
+        )
+        return messages
+
+    logger.info(
+        f"[MEMORY_PROMPT] Pruning {drop_count} historical user/assistant messages "
+        f"(keeping {keep_recent_target} of {len(user_like_indices)} most recent)."
+    )
+
+    indices_to_keep = set(user_like_indices[-keep_recent_target:])
+    trimmed: list[SimpleMessageModel] = []
+    pruned = 0
+
+    for idx, message in enumerate(messages):
+        if message.role in {"user", "assistant"} and idx not in indices_to_keep:
+            pruned += 1
+            continue
+        trimmed.append(message)
+
+    logger.info(
+        f"[MEMORY_PROMPT] Prompt messages reduced from {len(messages)} to {len(trimmed)} "
+        f"(removed {pruned} user/assistant entries)."
+    )
+    return trimmed
 
 
 def chat(
@@ -530,6 +602,7 @@ def chat(
 ) -> tuple[ConversationModel, MessageModel]:
     user_msg_id, conversation, bot = prepare_conversation(user, chat_input)
 
+    memory: ConversationMemoryModel | None = None
     # Process memory compression after adding user message
     logger.info(f"[MEMORY_CHAT] Starting memory compression for conversation_id={conversation.id}")
     try:
@@ -538,7 +611,7 @@ def chat(
         logger.info(f"[MEMORY_CHAT] Memory stats: total_message_count={memory.total_message_count}, levels={list(memory.contexts_by_level.keys())}")
         
         # Build context from compressed memory
-        compressed_context = build_context_from_memory(user.id, conversation)
+        compressed_context = build_context_from_memory(user.id, conversation, memory)
         if compressed_context:
             logger.info(f"[MEMORY_CHAT] Adding {len(compressed_context)} chars of compressed context to prompt")
             # Context will be prepended to system prompt later
@@ -547,6 +620,7 @@ def chat(
     except Exception as e:
         logger.error(f"[MEMORY_CHAT] Memory compression failed, continuing without compression: {str(e)}", exc_info=True)
         compressed_context = ""
+        memory = None
 
     # # Set tools only when tooluse is supported
     tools: Dict[str, AgentTool] = {}
@@ -658,6 +732,13 @@ def chat(
             SimpleMessageModel.from_message_model(message=message_map[user_msg_id]),
         )
         message_for_continue_generate = None
+
+    if memory is not None:
+        original_len = len(messages)
+        messages = prune_messages_with_memory(messages, memory)
+        logger.info(
+            f"[MEMORY_PROMPT] Messages passed to model: {original_len} -> {len(messages)} entries after pruning."
+        )
 
     generation_params = bot.generation_params if bot else None
 

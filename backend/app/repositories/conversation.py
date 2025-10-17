@@ -533,8 +533,9 @@ def find_conversation_memory(user_id: str, conversation_id: str) -> Conversation
         response = table.get_item(
             Key={
                 "PK": user_id,
-                "SK": compose_memory_sk(user_id, conversation_id)
-            }
+                "SK": compose_memory_sk(user_id, conversation_id),
+            },
+            ConsistentRead=True,
         )
         
         if "Item" not in response:

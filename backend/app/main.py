@@ -32,7 +32,8 @@ from starlette.types import ASGIApp, Message
 # No need for custom logging setup in Lambda environment
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s'
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    force=True,  # Ensure INFO-level handlers apply even when Lambda preconfigures logging
 )
 
 CORS_ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "*")
