@@ -236,19 +236,6 @@ export class Api extends Construct {
           POETRY_VERSION: "1.8.3",
           PIP_NO_CACHE_DIR: "1"
         },
-        commandHooks: {
-          beforeBundling(inputDir: string, outputDir: string): string[] {
-            return [];
-          },
-          afterBundling(inputDir: string, outputDir: string): string[] {
-            return [
-              `cp -v ${inputDir}/run.sh ${outputDir}/run.sh || true`,
-              `chmod +x ${outputDir}/run.sh || true`,
-              `cp -v ${inputDir}/run.py ${outputDir}/run.py || true`,
-              `ls -la ${outputDir}/ || true`,
-            ];
-          },
-        },
       },
       runtime: Runtime.PYTHON_3_13,
       architecture: Architecture.X86_64,
@@ -285,15 +272,13 @@ export class Api extends Construct {
         OPENSEARCH_DOMAIN_ENDPOINT: props.openSearchEndpoint || "",
         MEMORY_COMPRESSION_THRESHOLD: props.memoryCompressionThreshold?.toString() || "10",
         AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
-        AWS_LWA_INVOKE_MODE: "response_stream",
-        READINESS_CHECK_PATH: "/health",
-        READINESS_CHECK_PORT: "8000",
         PORT: "8000",
       },
       role: handlerRole,
       logRetention: logs.RetentionDays.THREE_MONTHS,
-      // SnapStart is not compatible with Lambda Web Adapter
-      snapStart: undefined,
+      snapStart: props.enableLambdaSnapStart
+        ? SnapStartConf.ON_PUBLISHED_VERSIONS
+        : undefined,
       layers: [
         LayerVersion.fromLayerVersionArn(
           this,
@@ -304,10 +289,11 @@ export class Api extends Construct {
         ),
       ],
     });
-
-    // Override handler to use run.sh for Lambda Web Adapter
-    const cfnFunction = handler.node.defaultChild as CfnResource;
-    cfnFunction.addPropertyOverride("Handler", "run.sh");
+    // https://github.com/awslabs/aws-lambda-web-adapter/tree/main/examples/fastapi-zip
+    (handler.node.defaultChild as CfnResource).addPropertyOverride(
+      "Handler",
+      "run.sh"
+    );
 
     const api = new HttpApi(this, "Default", {
       description: `Main API for ${Stack.of(this).stackName}`,
@@ -329,7 +315,7 @@ export class Api extends Construct {
 
     const integration = new HttpLambdaIntegration(
       "Integration",
-      handler
+      handler.currentVersion
     );
     const authorizer = new HttpUserPoolAuthorizer(
       "Authorizer",
