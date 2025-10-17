@@ -327,8 +327,8 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     
     Logic:
     - Each message = 1 Level 0 context
-    - Every 10 Level 0 contexts → compress to 1 Level 1 context
-    - Every 10 Level N contexts → compress to 1 Level N+1 context (recursive)
+    - Every 10 Level 0 contexts → compress to 1 Level 1 context and DELETE the 10 Level 0 contexts
+    - Every 10 Level N contexts → compress to 1 Level N+1 context and DELETE the 10 Level N contexts
     """
     logger.info(f"[MEMORY_COMPRESSION] ========== Starting Memory Compression Process ==========")
     logger.info(f"[MEMORY_COMPRESSION] user_id={user_id}, conversation_id={conversation.id}")
@@ -357,20 +357,18 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     
     logger.info(f"[MEMORY_COMPRESSION] Total messages in conversation: {message_count}")
     
-    # Check if we need compression
+    # Check if we need to add new messages
     pending_messages = message_count - memory.total_message_count
     
     logger.info(f"[MEMORY_COMPRESSION] Pending messages to process: {pending_messages}")
     
-    if pending_messages < MEMORY_COMPRESSION_THRESHOLD:
-        logger.info(f"[MEMORY_COMPRESSION] Only {pending_messages} pending messages, threshold is {MEMORY_COMPRESSION_THRESHOLD}. Skipping compression")
+    if pending_messages == 0:
+        logger.info(f"[MEMORY_COMPRESSION] No new messages to process. Skipping compression")
         logger.info(f"[MEMORY_COMPRESSION] ========== Memory Compression Process Completed (No Action) ==========")
         return memory
     
-    logger.info(f"[MEMORY_COMPRESSION] Threshold met! Processing compression for {pending_messages} pending messages (threshold: {MEMORY_COMPRESSION_THRESHOLD})")
-    
     # Add new messages as Level 0 contexts
-    logger.info(f"[MEMORY_COMPRESSION] Step 1: Adding new messages as Level 0 contexts")
+    logger.info(f"[MEMORY_COMPRESSION] Step 1: Adding {pending_messages} new messages as Level 0 contexts")
     messages_list = []
     for msg_id, msg in conversation.message_map.items():
         if msg.role in ["user", "assistant"]:
@@ -378,15 +376,11 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     
     # Sort by create_time
     messages_list.sort(key=lambda x: x[1].create_time)
-    logger.info(f"[MEMORY_COMPRESSION] Total messages sorted by create_time: {len(messages_list)}")
     
     # Get messages that need to be added as Level 0 contexts
     new_messages = messages_list[memory.total_message_count:]
-    logger.info(f"[MEMORY_COMPRESSION] New messages to add as Level 0 contexts: {len(new_messages)}")
     
     for idx, (msg_id, msg) in enumerate(new_messages):
-        # Extract text content
-
         text_content = ""
         for content in msg.content:
             if isinstance(content, TextContentModel):
@@ -398,14 +392,12 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
         context_id = str(ULID())
         message_idx = memory.total_message_count + idx
         logger.info(f"[MEMORY_COMPRESSION] Creating Level 0 context [{idx+1}/{len(new_messages)}]: context_id={context_id}, message_index={message_idx}, role={msg.role}")
-        logger.info(f"[MEMORY_COMPRESSION] Content preview: {text_content[:100]}...")
         
-        # Create Level 0 context
         ctx = CompressedContextModel(
             context_id=context_id,
             level=0,
             message_index=message_idx,
-            summary=f"{msg.role.upper()}: {text_content[:500]}",  # Truncate if too long
+            summary=f"{msg.role.upper()}: {text_content[:500]}",
             message_count=1,
             create_time=msg.create_time
         )
@@ -421,12 +413,17 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
     current_level = 0
     compression_rounds = 0
     
-    while memory.should_compress_level(current_level, threshold=MEMORY_COMPRESSION_THRESHOLD):
-        compression_rounds += 1
-        level_context_count = len(memory.get_level_contexts(current_level))
-        logger.info(f"[MEMORY_COMPRESSION] Compression Round {compression_rounds}: Level {current_level} has {level_context_count} contexts (threshold: {MEMORY_COMPRESSION_THRESHOLD})")
-        
+    while True:
         level_contexts = memory.get_level_contexts(current_level)
+        
+        if len(level_contexts) < MEMORY_COMPRESSION_THRESHOLD:
+            logger.info(f"[MEMORY_COMPRESSION] Level {current_level} has only {len(level_contexts)} contexts (< {MEMORY_COMPRESSION_THRESHOLD}). Stopping compression.")
+            break
+        
+        compression_rounds += 1
+        logger.info(f"[MEMORY_COMPRESSION] Compression Round {compression_rounds}: Level {current_level} has {len(level_contexts)} contexts")
+        
+        # Take first 10 contexts to compress
         contexts_to_compress = level_contexts[:MEMORY_COMPRESSION_THRESHOLD]
         
         logger.info(f"[MEMORY_COMPRESSION] Compressing {MEMORY_COMPRESSION_THRESHOLD} Level {current_level} contexts → 1 Level {current_level+1} context")
@@ -441,14 +438,19 @@ def process_memory_compression(user_id: str, conversation: ConversationModel):
         memory.add_context(compressed)
         logger.info(f"[MEMORY_COMPRESSION] Successfully added compressed context to Level {current_level+1}")
         
-        # Remove compressed contexts from current level
+        # DELETE the compressed contexts from current level
         memory.contexts_by_level[current_level] = level_contexts[MEMORY_COMPRESSION_THRESHOLD:]
         remaining_contexts = len(memory.contexts_by_level[current_level])
-        logger.info(f"[MEMORY_COMPRESSION] Removed {MEMORY_COMPRESSION_THRESHOLD} compressed contexts from Level {current_level}. Remaining: {remaining_contexts}")
+        logger.info(f"[MEMORY_COMPRESSION] Deleted {MEMORY_COMPRESSION_THRESHOLD} compressed contexts from Level {current_level}. Remaining: {remaining_contexts}")
         
-        # Move to next level
-        current_level += 1
-        logger.info(f"[MEMORY_COMPRESSION] Moving to next level: {current_level}")
+        # Check if we should continue compressing at next level
+        next_level_contexts = memory.get_level_contexts(current_level + 1)
+        if len(next_level_contexts) >= MEMORY_COMPRESSION_THRESHOLD:
+            current_level += 1
+            logger.info(f"[MEMORY_COMPRESSION] Moving to next level: {current_level}")
+        else:
+            logger.info(f"[MEMORY_COMPRESSION] Level {current_level + 1} has only {len(next_level_contexts)} contexts. Stopping.")
+            break
     
     logger.info(f"[MEMORY_COMPRESSION] Compression rounds completed: {compression_rounds}")
     logger.info(f"[MEMORY_COMPRESSION] Final memory structure:")

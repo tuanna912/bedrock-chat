@@ -36,6 +36,10 @@ logging.basicConfig(
     force=True,  # Ensure INFO-level handlers apply even when Lambda preconfigures logging
 )
 
+# Explicitly set log level for memory compression modules
+for logger_name in ['app.usecases.chat', 'app.repositories.conversation']:
+    logging.getLogger(logger_name).setLevel(logging.INFO)
+
 CORS_ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "*")
 PUBLISHED_API_ID = os.environ.get("PUBLISHED_API_ID", None)
 
