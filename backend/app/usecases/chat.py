@@ -996,6 +996,15 @@ def propose_conversation_title(
 
 def fetch_conversation(user_id: str, conversation_id: str) -> Conversation:
     conversation = find_conversation_by_id(user_id, conversation_id)
+    
+    # Process memory compression when fetching conversation
+    logger.info(f"[MEMORY_FETCH] Processing memory compression for conversation_id={conversation_id}")
+    try:
+        memory = process_memory_compression(user_id, conversation)
+        logger.info(f"[MEMORY_FETCH] Memory compression processed: total_message_count={memory.total_message_count}, levels={list(memory.contexts_by_level.keys())}")
+    except Exception as e:
+        logger.error(f"[MEMORY_FETCH] Memory compression failed: {str(e)}", exc_info=True)
+        # Continue even if memory compression fails
 
     message_map = {
         message_id: MessageOutput(
