@@ -2,8 +2,6 @@ import { Construct } from "constructs";
 import * as path from "path";
 import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
-import { ITable } from "aws-cdk-lib/aws-dynamodb";
-import { CfnPipe } from "aws-cdk-lib/aws-pipes";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -25,31 +23,30 @@ export interface EmbeddingProps {
   readonly bedrockRegion: string;
   readonly documentBucket: IBucket;
   readonly bedrockCustomBotProject: codebuild.IProject;
+  readonly bedrockSharedKnowledgeBasesProject: codebuild.IProject;
   readonly enableRagReplicas: boolean;
 }
 
 export class Embedding extends Construct {
+  readonly stateMachine: sfn.StateMachine;
   readonly removalHandler: IFunction;
+
   private _updateSyncStatusHandler: IFunction;
-  private _fetchStackOutputHandler: IFunction;
-  private _StoreKnowledgeBaseIdHandler: IFunction;
-  private _StoreGuardrailArnHandler: IFunction;
-  private _pipeRole: iam.Role;
-  private _stateMachine: sfn.StateMachine;
-  private _removalHandler: IFunction;
+  private _bootstrapStateMachineHandler: IFunction;
+  private _finalizeCustomBotBuildHandler: IFunction;
+  private _finalizeSharedKnowledgeBasesBuildHandler: IFunction;
+  private _synchronizeDataSourceHandler: IFunction;
+  private _lockHandler: IFunction;
 
   constructor(scope: Construct, id: string, props: EmbeddingProps) {
     super(scope, id);
 
-    this.setupStateMachineHandlers(props)
-      .setupStateMachine(props)
-      .setupEventBridgePipe(props)
-      .setupRemovalHandler(props);
-
-    this.removalHandler = this._removalHandler;
+    this.setupStateMachineHandlers(props);
+    this.stateMachine = this.setupStateMachine(props)
+    this.removalHandler = this.setupRemovalHandler(props);
   }
 
-  private setupStateMachineHandlers(props: EmbeddingProps): this {
+  private setupStateMachineHandlers(props: EmbeddingProps) {
     const handlerRole = new iam.Role(this, "HandlerRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
     });
@@ -87,6 +84,7 @@ export class Embedding extends Construct {
         resources: ["arn:aws:logs:*:*:*"],
       })
     );
+    props.documentBucket.grantReadWrite(handlerRole);
 
     this._updateSyncStatusHandler = new DockerImageFunction(
       this,
@@ -117,9 +115,9 @@ export class Embedding extends Construct {
       }
     );
 
-    this._fetchStackOutputHandler = new DockerImageFunction(
+    this._bootstrapStateMachineHandler = new DockerImageFunction(
       this,
-      "FetchStackOutputHandler",
+      "BootstrapStateMachineHandler",
       {
         code: DockerImageCode.fromImageAsset(
           path.join(__dirname, "../../../backend"),
@@ -127,7 +125,7 @@ export class Embedding extends Construct {
             platform: Platform.LINUX_AMD64,
             file: "lambda.Dockerfile",
             cmd: [
-              "embedding_statemachine.bedrock_knowledge_base.fetch_stack_output.handler",
+              "embedding_statemachine.bedrock_knowledge_base.bootstrap_state_machine.handler",
             ],
             exclude: [...excludeDockerImage],
           }
@@ -136,14 +134,46 @@ export class Embedding extends Construct {
         timeout: Duration.minutes(1),
         role: handlerRole,
         environment: {
+          ACCOUNT: Stack.of(this).account,
+          REGION: Stack.of(this).region,
+          BOT_TABLE_NAME: props.database.botTable.tableName,
+          TABLE_ACCESS_ROLE_ARN: props.database.tableAccessRole.roleArn,
+        },
+        logRetention: logs.RetentionDays.THREE_MONTHS,
+      }
+    );
+    this._finalizeCustomBotBuildHandler = new DockerImageFunction(
+      this,
+      "FinalizeCustomBotBuildHandler",
+      {
+        code: DockerImageCode.fromImageAsset(
+          path.join(__dirname, "../../../backend"),
+          {
+            platform: Platform.LINUX_AMD64,
+            file: "lambda.Dockerfile",
+            cmd: [
+              "embedding_statemachine.bedrock_knowledge_base.finalize_custom_bot_build.handler",
+            ],
+            exclude: [...excludeDockerImage],
+          }
+        ),
+        memorySize: 512,
+        timeout: Duration.minutes(1),
+        role: handlerRole,
+        environment: {
+          ACCOUNT: Stack.of(this).account,
+          REGION: Stack.of(this).region,
           BEDROCK_REGION: props.bedrockRegion,
+          CONVERSATION_TABLE_NAME: props.database.conversationTable.tableName,
+          BOT_TABLE_NAME: props.database.botTable.tableName,
+          TABLE_ACCESS_ROLE_ARN: props.database.tableAccessRole.roleArn,
         },
         logRetention: logs.RetentionDays.THREE_MONTHS,
       }
     );
-    this._StoreKnowledgeBaseIdHandler = new DockerImageFunction(
+    this._finalizeSharedKnowledgeBasesBuildHandler = new DockerImageFunction(
       this,
-      "StoreKnowledgeBaseIdHandler",
+      "FinalizeSharedKnowledgeBasesBuildHandler",
       {
         code: DockerImageCode.fromImageAsset(
           path.join(__dirname, "../../../backend"),
@@ -151,374 +181,426 @@ export class Embedding extends Construct {
             platform: Platform.LINUX_AMD64,
             file: "lambda.Dockerfile",
             cmd: [
-              "embedding_statemachine.bedrock_knowledge_base.store_knowledge_base_id.handler",
+              "embedding_statemachine.bedrock_knowledge_base.finalize_shared_knowledge_bases_build.handler",
             ],
             exclude: [...excludeDockerImage],
           }
         ),
         memorySize: 512,
         timeout: Duration.minutes(1),
+        role: handlerRole,
         environment: {
           ACCOUNT: Stack.of(this).account,
           REGION: Stack.of(this).region,
+          BEDROCK_REGION: props.bedrockRegion,
           CONVERSATION_TABLE_NAME: props.database.conversationTable.tableName,
           BOT_TABLE_NAME: props.database.botTable.tableName,
           TABLE_ACCESS_ROLE_ARN: props.database.tableAccessRole.roleArn,
         },
-        role: handlerRole,
         logRetention: logs.RetentionDays.THREE_MONTHS,
       }
     );
-    this._StoreGuardrailArnHandler = new DockerImageFunction(
-      this,
-      "StoreGuardrailArnHandler",
-      {
-        code: DockerImageCode.fromImageAsset(
-          path.join(__dirname, "../../../backend"),
-          {
-            platform: Platform.LINUX_AMD64,
-            file: "lambda.Dockerfile",
-            cmd: [
-              "embedding_statemachine.guardrails.store_guardrail_arn.handler",
-            ],
-            exclude: [...excludeDockerImage],
-          }
-        ),
-        memorySize: 512,
-        timeout: Duration.minutes(1),
-        environment: {
-          ACCOUNT: Stack.of(this).account,
-          REGION: Stack.of(this).region,
-          CONVERSATION_TABLE_NAME: props.database.conversationTable.tableName,
-          BOT_TABLE_NAME: props.database.botTable.tableName,
-          TABLE_ACCESS_ROLE_ARN: props.database.tableAccessRole.roleArn,
-        },
-        role: handlerRole,
-        logRetention: logs.RetentionDays.THREE_MONTHS,
-      }
-    );
-    return this;
+
+    this._synchronizeDataSourceHandler = new DockerImageFunction(this, "SynchronizeDataSourceHandler", {
+      code: DockerImageCode.fromImageAsset(path.join(__dirname, "../../../backend"), {
+        platform: Platform.LINUX_AMD64,
+        file: "lambda.Dockerfile",
+        cmd: [
+          "embedding_statemachine.bedrock_knowledge_base.synchronize_data_source.handler",
+        ],
+        exclude: [...excludeDockerImage],
+      }),
+      memorySize: 512,
+      timeout: Duration.minutes(15),
+      environment: {
+        ACCOUNT: Stack.of(this).account,
+        REGION: Stack.of(this).region,
+        BEDROCK_REGION: props.bedrockRegion,
+        DOCUMENT_BUCKET: props.documentBucket.bucketName,
+      },
+      role: handlerRole,
+      logRetention: logs.RetentionDays.THREE_MONTHS,
+    });
+
+    this._lockHandler = new DockerImageFunction(this, "LockHandler", {
+      code: DockerImageCode.fromImageAsset(path.join(__dirname, "../../../backend"), {
+        platform: Platform.LINUX_AMD64,
+        file: "lambda.Dockerfile",
+        cmd: [
+          "embedding_statemachine.bedrock_knowledge_base.lock.handler",
+        ],
+        exclude: [...excludeDockerImage],
+      }),
+      memorySize: 512,
+      timeout: Duration.minutes(1),
+      environment: {
+        ACCOUNT: Stack.of(this).account,
+        REGION: Stack.of(this).region,
+        BEDROCK_REGION: props.bedrockRegion,
+        DOCUMENT_BUCKET: props.documentBucket.bucketName,
+      },
+      role: handlerRole,
+      logRetention: logs.RetentionDays.THREE_MONTHS,
+    });
   }
 
-  private setupStateMachine(props: EmbeddingProps): this {
-    const extractFirstElement = new sfn.Pass(this, "ExtractFirstElement", {
-      parameters: {
-        "dynamodb.$": "$[0].dynamodb",
-        "eventID.$": "$[0].eventID",
-        "eventName.$": "$[0].eventName",
-        "eventSource.$": "$[0].eventSource",
-        "eventVersion.$": "$[0].eventVersion",
-        "awsRegion.$": "$[0].awsRegion",
-        "eventSourceARN.$": "$[0].eventSourceARN",
+  private setupStateMachine(props: EmbeddingProps): sfn.StateMachine {
+    // To build the information necessary for processing the embedded state machine, retrieve information about bots and shared Knowledge Bases from the database.
+    const bootstrapStateMachine = new tasks.LambdaInvoke(this, "BootstrapStateMachine", {
+      lambdaFunction: this._bootstrapStateMachineHandler,
+      resultSelector: {
+        QueuedBots: sfn.JsonPath.objectAt("$.Payload.QueuedBots"),
+        SharedKnowledgeBases: sfn.JsonPath.objectAt("$.Payload.SharedKnowledgeBases"),
       },
-      resultPath: "$",
     });
 
-    const startCustomBotBuild = new tasks.CodeBuildStartBuild(
-      this,
-      "StartCustomBotBuild",
-      {
-        project: props.bedrockCustomBotProject,
-        integrationPattern: sfn.IntegrationPattern.RUN_JOB,
-        environmentVariablesOverride: {
-          PK: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: sfn.JsonPath.stringAt("$.dynamodb.NewImage.PK.S"),
-          },
-          SK: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: sfn.JsonPath.stringAt("$.dynamodb.NewImage.SK.S"),
-          },
-          // Bucket name provisioned by the bedrock stack
-          BEDROCK_CLAUDE_CHAT_DOCUMENT_BUCKET_NAME: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: props.documentBucket.bucketName,
-          },
-          // Source info e.g. file names, URLs, etc.
-          KNOWLEDGE: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: sfn.JsonPath.stringAt(
-              "States.JsonToString($.dynamodb.NewImage.Knowledge.M)"
-            ),
-          },
-          // Bedrock Knowledge Base configuration
-          BEDROCK_KNOWLEDGE_BASE: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: sfn.JsonPath.stringAt(
-              "States.JsonToString($.dynamodb.NewImage.BedrockKnowledgeBase.M)"
-            ),
-          },
-          BEDROCK_GUARDRAILS: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: sfn.JsonPath.stringAt(
-              "States.JsonToString($.dynamodb.NewImage.GuardrailsParams.M)"
-            ),
-          },
-          ENABLE_RAG_REPLICAS: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: props.enableRagReplicas.toString(),
-          },
-        },
-        resultPath: "$.Build",
-      }
+    const checkSyncSharedKnowledgeBasesRequired = new sfn.Choice(this, "CheckSyncSharedKnowledgeBasesRequired");
+
+    // Acquire a distributed lock for shared Knowledge Bases.
+    const acquireLockForSharedKnowledgeBases = this.createAcquireLockTask("ForSharedKnowledgeBases", {
+      name: "shared-knowledge-bases",
+      resultPath: "$.Lock",
+    });
+
+    // Release the acquired lock for shared Knowledge Bases.
+    const releaseLockForSharedKnowledgeBasesOnFailed = this.createReleaseLockTask("ForSharedKnowledgeBasesOnFailed", {
+      name: "shared-knowledge-bases",
+      lockId: sfn.JsonPath.stringAt("$.Lock.LockId"),
+    });
+    const syncSharedKnowledgeBasesFailed = new sfn.Fail(this, "SyncSharedKnowledgeBasesFailed", {
+      cause: "Shared knowledge bases sync failed",
+    });
+    const releaseLockFallback = (
+      releaseLockForSharedKnowledgeBasesOnFailed
+        .next(syncSharedKnowledgeBasesFailed)
     );
 
-    const updateSyncStatusRunning = this.createUpdateSyncStatusTask(
-      "UpdateSyncStatusRunning",
-      "RUNNING"
-    );
-
-    const updateSyncStatusSucceeded = this.createUpdateSyncStatusTask(
-      "UpdateSyncStatusSuccess",
-      "SUCCEEDED",
-      "Knowledge base sync succeeded"
-    );
-
-    const updateSyncStatusFailed = new tasks.LambdaInvoke(
-      this,
-      "UpdateSyncStatusFailed",
-      {
-        lambdaFunction: this._updateSyncStatusHandler,
-        payload: sfn.TaskInput.fromObject({
-          "cause.$": "$.Cause",
-        }),
-        resultPath: sfn.JsonPath.DISCARD,
-      }
-    );
-
-    const fallback = updateSyncStatusFailed.next(
-      new sfn.Fail(this, "Fail", {
-        cause: "Knowledge base sync failed",
-        error: "Knowledge base sync failed",
-      })
-    );
-    startCustomBotBuild.addCatch(fallback);
-
-    const fetchStackOutput = new tasks.LambdaInvoke(this, "FetchStackOutput", {
-      lambdaFunction: this._fetchStackOutputHandler,
+    const updateSyncStatusRunning = new tasks.LambdaInvoke(this, "UpdateSyncStatusRunning", {
+      lambdaFunction: this._updateSyncStatusHandler,
       payload: sfn.TaskInput.fromObject({
-        "pk.$": "$.dynamodb.NewImage.PK.S",
-        "sk.$": "$.dynamodb.NewImage.SK.S",
+        QueuedBots: sfn.JsonPath.objectAt("$.QueuedBots"),
+        SyncStatus: "RUNNING",
       }),
-      resultPath: "$.StackOutput",
+      resultPath: sfn.JsonPath.DISCARD,
     });
-    fetchStackOutput.addCatch(fallback);
-
-    const storeKnowledgeBaseId = new tasks.LambdaInvoke(
-      this,
-      "StoreKnowledgeBaseId",
-      {
-        lambdaFunction: this._StoreKnowledgeBaseIdHandler,
-        payload: sfn.TaskInput.fromObject({
-          "pk.$": "$.dynamodb.NewImage.PK.S",
-          "sk.$": "$.dynamodb.NewImage.SK.S",
-          "stack_output.$": "$.StackOutput.Payload",
-        }),
-        resultPath: sfn.JsonPath.DISCARD,
-      }
-    );
-    storeKnowledgeBaseId.addCatch(fallback);
-
-    const storeGuardrailArn = new tasks.LambdaInvoke(
-      this,
-      "StoreGuardrailArn",
-      {
-        lambdaFunction: this._StoreGuardrailArnHandler,
-        payload: sfn.TaskInput.fromObject({
-          "pk.$": "$.dynamodb.NewImage.PK.S",
-          "sk.$": "$.dynamodb.NewImage.SK.S",
-          "stack_output.$": "$.StackOutput.Payload",
-        }),
-        resultPath: sfn.JsonPath.DISCARD,
-      }
-    );
-    storeGuardrailArn.addCatch(fallback);
-
-    const startIngestionJob = new tasks.CallAwsServiceCrossRegion(
-      this,
-      "StartIngestionJob",
-      {
-        service: "bedrock-agent",
-        action: "startIngestionJob",
-        iamAction: "bedrock:StartIngestionJob",
-        region: props.bedrockRegion,
-        parameters: {
-          dataSourceId: sfn.JsonPath.stringAt("$.DataSourceId"),
-          knowledgeBaseId: sfn.JsonPath.stringAt("$.KnowledgeBaseId"),
-        },
-        // Ref: https://docs.aws.amazon.com/ja_jp/service-authorization/latest/reference/list_amazonbedrock.html#amazonbedrock-knowledge-base
-        iamResources: [
-          `arn:${Stack.of(this).partition}:bedrock:${props.bedrockRegion}:${
-            Stack.of(this).account
-          }:knowledge-base/*`,
-        ],
-        resultPath: "$.IngestionJob",
-      }
-    );
-
-    const getIngestionJob = new tasks.CallAwsServiceCrossRegion(
-      this,
-      "GetIngestionJob",
-      {
-        service: "bedrock-agent",
-        action: "getIngestionJob",
-        iamAction: "bedrock:GetIngestionJob",
-        region: props.bedrockRegion,
-        parameters: {
-          dataSourceId: sfn.JsonPath.stringAt(
-            "$.IngestionJob.ingestionJob.dataSourceId"
-          ),
-          knowledgeBaseId: sfn.JsonPath.stringAt(
-            "$.IngestionJob.ingestionJob.knowledgeBaseId"
-          ),
-          ingestionJobId: sfn.JsonPath.stringAt(
-            "$.IngestionJob.ingestionJob.ingestionJobId"
-          ),
-        },
-        // Ref: https://docs.aws.amazon.com/ja_jp/service-authorization/latest/reference/list_amazonbedrock.html#amazonbedrock-knowledge-base
-        iamResources: [
-          `arn:${Stack.of(this).partition}:bedrock:${props.bedrockRegion}:${
-            Stack.of(this).account
-          }:knowledge-base/*`,
-        ],
-        resultPath: "$.IngestionJob",
-      }
-    );
-
-    const waitTask = new sfn.Wait(this, "WaitSeconds", {
-      time: sfn.WaitTime.duration(Duration.seconds(3)),
+    updateSyncStatusRunning.addCatch(releaseLockFallback, {
+      resultPath: "$.Error",
     });
 
-    const checkIngestionJobStatus = new sfn.Choice(
-      this,
-      "CheckIngestionJobStatus"
-    )
-      .when(
-        sfn.Condition.stringEquals(
-          "$.IngestionJob.ingestionJob.status",
-          "COMPLETE"
-        ),
-        new sfn.Pass(this, "IngestionJobCompleted")
-      )
-      .when(
-        sfn.Condition.stringEquals(
-          "$.IngestionJob.ingestionJob.status",
-          "FAILED"
-        ),
-        new tasks.LambdaInvoke(this, "UpdateSyncStatusFailedForIngestion", {
-          lambdaFunction: this._updateSyncStatusHandler,
-          payload: sfn.TaskInput.fromObject({
-            pk: sfn.JsonPath.stringAt("$.PK"),
-            sk: sfn.JsonPath.stringAt("$.SK"),
-            ingestion_job: sfn.JsonPath.stringAt("$.IngestionJob"),
-          }),
-          resultPath: sfn.JsonPath.DISCARD,
-        }).next(
-          new sfn.Fail(this, "IngestionFail", {
-            cause: "Ingestion job failed",
-            error: "Ingestion job failed",
-          })
-        )
-      )
-      .otherwise(waitTask.next(getIngestionJob));
+    const buildSharedKnowledgeBases = new tasks.CodeBuildStartBuild(this, "BuildSharedKnowledgeBases", {
+      project: props.bedrockSharedKnowledgeBasesProject,
+      integrationPattern: sfn.IntegrationPattern.RUN_JOB,
+      environmentVariablesOverride: {
+        SHARED_KNOWLEDGE_BASES: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: sfn.JsonPath.jsonToString(sfn.JsonPath.objectAt("$.SharedKnowledgeBases")),
+        },
+        // Bucket name provisioned by the bedrock stack
+        BEDROCK_CLAUDE_CHAT_DOCUMENT_BUCKET_NAME: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: props.documentBucket.bucketName,
+        },
+        ENABLE_RAG_REPLICAS: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: props.enableRagReplicas.toString(),
+        },
+      },
+      resultPath: sfn.JsonPath.DISCARD,
+    });
 
-    const mapIngestionJobs = new sfn.Map(this, "MapIngestionJobs", {
-      inputPath: "$.StackOutput.Payload.items",
+    const passSharedKnowledgeBasesBuildError = new sfn.Pass(this, "PassSharedKnowledgeBasesBuildError", {
+      parameters: {
+        QueuedBots: sfn.JsonPath.objectAt("$.QueuedBots"),
+        Lock: sfn.JsonPath.objectAt("$.Lock"),
+        Error: sfn.JsonPath.stringAt("$.Error.Error"),
+        Cause: sfn.JsonPath.stringToJson(sfn.JsonPath.stringAt("$.Error.Cause")),
+      },
+    });
+    const updateSyncStatusFailedForSharedKnowledgeBasesBuild = new tasks.LambdaInvoke(this, "UpdateSyncStatusFailedForSharedKnowledgeBasesBuild", {
+      lambdaFunction: this._updateSyncStatusHandler,
+      payload: sfn.TaskInput.fromObject({
+        QueuedBots: sfn.JsonPath.objectAt("$.QueuedBots"),
+        SyncStatus: "FAILED",
+        Build: sfn.JsonPath.objectAt("$.Cause.Build"),
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    updateSyncStatusFailedForSharedKnowledgeBasesBuild.addCatch(releaseLockFallback, {
+      resultPath: "$.Error",
+    });
+
+    const buildSharedKnowledgeBasesFallback = (
+      passSharedKnowledgeBasesBuildError
+        .next(updateSyncStatusFailedForSharedKnowledgeBasesBuild)
+        .next(releaseLockFallback)
+    );
+    buildSharedKnowledgeBases.addCatch(buildSharedKnowledgeBasesFallback, {
+      resultPath: "$.Error",
+    })
+
+    // Obtain the ID of the shared Knowledge Bases built by `BrChatSharedKbStack`, and update `knowledge_base_id` of the referring bots.
+    const finalizeSharedKnowledgeBasesBuild = new tasks.LambdaInvoke(this, "FinalizeSharedKnowledgeBasesBuild", {
+      lambdaFunction: this._finalizeSharedKnowledgeBasesBuildHandler,
+      resultSelector: {
+        QueuedBots: sfn.JsonPath.objectAt("$.Payload.QueuedBots"),
+        SharedKnowledgeBases: sfn.JsonPath.objectAt("$.Payload.SharedKnowledgeBases"),
+        DataSources: sfn.JsonPath.objectAt("$.Payload.DataSources"),
+        Lock: sfn.JsonPath.objectAt("$.Payload.Lock"),
+      },
+    });
+
+    const mapIngestionJobsForSharedKnowledgeBases = new sfn.Map(this, "MapIngestionJobsForSharedKnowledgeBases", {
+      inputPath: "$.DataSources",
       resultPath: sfn.JsonPath.DISCARD,
       maxConcurrency: 1,
-    }).itemProcessor(
-      startIngestionJob.next(getIngestionJob).next(checkIngestionJobStatus)
+    });
+    // Perform entire synchronization into the data source of shared Knowledge Bases.
+    const ingestionJobForSharedKnowledgeBases = this.createIngestionTask("Shared", {});
+
+    const updateSyncStatusFailedForSharedKnowledgeBases = new tasks.LambdaInvoke(this, "UpdateSyncStatusFailedForSharedKnowledgeBases", {
+      lambdaFunction: this._updateSyncStatusHandler,
+      payload: sfn.TaskInput.fromObject({
+        QueuedBots: sfn.JsonPath.objectAt("$.QueuedBots"),
+        SyncStatus: "FAILED",
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    })
+    updateSyncStatusFailedForSharedKnowledgeBases.addCatch(releaseLockFallback, {
+      resultPath: "$.Error",
+    });
+
+    const syncSharedKnowledgeBasesFallback = (
+      updateSyncStatusFailedForSharedKnowledgeBases
+        .next(releaseLockFallback)
+    );
+    finalizeSharedKnowledgeBasesBuild.addCatch(syncSharedKnowledgeBasesFallback, {
+      resultPath: "$.Error",
+    });
+    mapIngestionJobsForSharedKnowledgeBases.addCatch(syncSharedKnowledgeBasesFallback, {
+      resultPath: "$.Error",
+    });
+
+    // Release the acquired lock for shared Knowledge Bases.
+    const releaseLockForSharedKnowledgeBases = this.createReleaseLockTask("ForSharedKnowledgeBases", {
+      name: "shared-knowledge-bases",
+      lockId: sfn.JsonPath.stringAt("$.Lock.LockId"),
+    });
+
+    const mapQueuedBots = new sfn.Map(this, "MapQueuedBots", {
+      itemsPath: "$.QueuedBots",
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+
+    // Acquire a distributed lock for custom bots.
+    const acquireLockForCustomBot = this.createAcquireLockTask("ForCustomBot", {
+      name: sfn.JsonPath.format("custombot-{}", sfn.JsonPath.stringAt("$.BotId")),
+      resultPath: "$.Lock",
+    });
+
+    const startCustomBotBuild = new tasks.CodeBuildStartBuild(this, "StartCustomBotBuild", {
+      project: props.bedrockCustomBotProject,
+      integrationPattern: sfn.IntegrationPattern.RUN_JOB,
+      environmentVariablesOverride: {
+        OWNER_USER_ID: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: sfn.JsonPath.stringAt("$.OwnerUserId"),
+        },
+        BOT_ID: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: sfn.JsonPath.stringAt("$.BotId"),
+        },
+        // Bucket name provisioned by the bedrock stack
+        BEDROCK_CLAUDE_CHAT_DOCUMENT_BUCKET_NAME: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: props.documentBucket.bucketName,
+        },
+        // Source info e.g. file names, URLs, etc.
+        KNOWLEDGE: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: sfn.JsonPath.jsonToString(sfn.JsonPath.objectAt("$.Knowledge")),
+        },
+        // Bedrock Knowledge Base configuration
+        KNOWLEDGE_BASE: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: sfn.JsonPath.jsonToString(sfn.JsonPath.objectAt("$.KnowledgeBase")),
+        },
+        GUARDRAILS: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: sfn.JsonPath.jsonToString(sfn.JsonPath.objectAt("$.Guardrails")),
+        },
+        ENABLE_RAG_REPLICAS: {
+          type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+          value: props.enableRagReplicas.toString(),
+        },
+      },
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+
+    // Release the acquired lock for custom bots.
+    const releaseLockForCustomBot = this.createReleaseLockTask("ForCustomBot", {
+      name: sfn.JsonPath.format("custombot-{}", sfn.JsonPath.stringAt("$.BotId")),
+      lockId: sfn.JsonPath.stringAt("$.Lock.LockId"),
+    });
+    const syncCustomBotSucceeded = new sfn.Succeed(this, "SyncCustomBotSucceeded");
+    const syncCustomBotFinished = (
+      releaseLockForCustomBot
+        .next(syncCustomBotSucceeded)
     );
 
-    const definition = extractFirstElement
-      .next(updateSyncStatusRunning)
-      .next(startCustomBotBuild)
-      .next(fetchStackOutput)
-      .next(storeKnowledgeBaseId)
-      .next(storeGuardrailArn)
-      .next(mapIngestionJobs)
-      .next(updateSyncStatusSucceeded);
+    const passCustomBotBuildError = new sfn.Pass(this, "PassCustomBotBuildError", {
+      parameters: {
+        OwnerUserId: sfn.JsonPath.stringAt("$.OwnerUserId"),
+        BotId: sfn.JsonPath.stringAt("$.BotId"),
+        Lock: sfn.JsonPath.objectAt("$.Lock"),
+        Error: sfn.JsonPath.stringAt("$.Error.Error"),
+        Cause: sfn.JsonPath.stringToJson(sfn.JsonPath.stringAt("$.Error.Cause")),
+      },
+    });
+    const updateSyncStatusFailedForCustomBotBuild = new tasks.LambdaInvoke(this, "UpdateSyncStatusFailedForCustomBotBuild", {
+      lambdaFunction: this._updateSyncStatusHandler,
+      payload: sfn.TaskInput.fromObject({
+        OwnerUserId: sfn.JsonPath.stringAt("$.OwnerUserId"),
+        BotId: sfn.JsonPath.stringAt("$.BotId"),
+        SyncStatus: "FAILED",
+        Build: sfn.JsonPath.objectAt("$.Cause.Build"),
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    updateSyncStatusFailedForCustomBotBuild.addCatch(syncCustomBotFinished, {
+      resultPath: "$.Error",
+    });
 
-    this._stateMachine = new sfn.StateMachine(this, "StateMachine", {
+    const buildCustomBotFallback = (
+      passCustomBotBuildError
+        .next(updateSyncStatusFailedForCustomBotBuild)
+        .next(syncCustomBotFinished)
+    );
+
+    startCustomBotBuild.addCatch(buildCustomBotFallback, {
+      resultPath: "$.Error",
+    });
+
+    // Obtain the ID of the dedicated Knowledge Bases and Guardrails built by `BrChatKbStackXXX`, and update `knowledge_base_id` and `guardrail_arn` of the bot.
+    const finalizeCustomBotBuild = new tasks.LambdaInvoke(this, "FinalizeCustomBotBuild", {
+      lambdaFunction: this._finalizeCustomBotBuildHandler,
+      resultSelector: {
+        OwnerUserId: sfn.JsonPath.stringAt("$.Payload.OwnerUserId"),
+        BotId: sfn.JsonPath.stringAt("$.Payload.BotId"),
+        DataSources: sfn.JsonPath.objectAt("$.Payload.DataSources"),
+        Lock: sfn.JsonPath.objectAt("$.Payload.Lock"),
+      },
+    });
+
+    const mapIngestionJobsForCustomBot = new sfn.Map(this, "MapIngestionJobsForCustomBot", {
+      inputPath: "$.DataSources",
+      resultPath: sfn.JsonPath.DISCARD,
+      maxConcurrency: 1,
+    });
+    // Perform direct ingestion or entire synchronization into the data source of dedicated Knowledge Bases.
+    const ingestionJobForCustomBot = this.createIngestionTask("CustomBot", {});
+
+    const updateSyncStatusFailedForCustomBot = new tasks.LambdaInvoke(this, "UpdateSyncStatusFailedForCustomBot", {
+      lambdaFunction: this._updateSyncStatusHandler,
+      payload: sfn.TaskInput.fromObject({
+        OwnerUserId: sfn.JsonPath.stringAt("$.OwnerUserId"),
+        BotId: sfn.JsonPath.stringAt("$.BotId"),
+        SyncStatus: "FAILED",
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    updateSyncStatusFailedForCustomBot.addCatch(syncCustomBotFinished, {
+      resultPath: "$.Error",
+    });
+
+    const syncCustomBotFallback = (
+      updateSyncStatusFailedForCustomBot
+        .next(syncCustomBotFinished)
+    );
+    finalizeCustomBotBuild.addCatch(syncCustomBotFallback, {
+      resultPath: "$.Error",
+    });
+    mapIngestionJobsForCustomBot.addCatch(syncCustomBotFallback, {
+      resultPath: "$.Error",
+    });
+
+    const updateSyncStatusSucceeded = new tasks.LambdaInvoke(this, "UpdateSyncStatusSuccess", {
+      lambdaFunction: this._updateSyncStatusHandler,
+      payload: sfn.TaskInput.fromObject({
+        OwnerUserId: sfn.JsonPath.stringAt("$.OwnerUserId"),
+        BotId: sfn.JsonPath.stringAt("$.BotId"),
+        SyncStatus: "SUCCEEDED",
+        SyncStatusReason: "Knowledge base sync succeeded",
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    updateSyncStatusSucceeded.addCatch(syncCustomBotFinished, {
+      resultPath: "$.Error",
+    });
+
+    /**
+     * Knowledge Base Synchronization State Machine
+     * 
+     * This state machine processes both Shared and Dedicated Knowledge Bases through two main flows:
+     * 
+     * 1. SharedKnowledgeBases Flow:
+     *    - Executes when SharedKnowledgeBases != null
+     *    - Handles full synchronization of shared Knowledge Bases
+     *    - Processes bots without file diffs via global data source sync
+     * 
+     * 2. MapQueuedBots Flow:
+     *    - Always executes (after SharedKnowledgeBases flow or standalone)
+     *    - Processes each queued bot individually for:
+     *      a) Dedicated bots: Creates KB + processes file diffs
+     *      b) Shared bots with file diffs: Processes bot-specific file changes to shared KB
+     *      c) Guardrails management for all bots
+     * 
+     * Why shared bots with file diffs use MapQueuedBots flow:
+     * - File diffs contain bot-specific metadata (OwnerUserId, BotId)
+     * - Requires bot-specific S3 path construction (user_id/bot_id/filename)
+     * - Enables individual bot status tracking during ingestion
+     */
+    const definition = (
+      bootstrapStateMachine
+        .next(
+          checkSyncSharedKnowledgeBasesRequired
+            .when(sfn.Condition.isNotNull("$.SharedKnowledgeBases"), (
+              // If there are updates to the shared Knowledge Base, build shared Knowledge Bases and synchronize data sources.
+              acquireLockForSharedKnowledgeBases
+                .next(updateSyncStatusRunning)
+                .next(buildSharedKnowledgeBases)
+                .next(finalizeSharedKnowledgeBasesBuild)
+                .next(
+                  mapIngestionJobsForSharedKnowledgeBases.itemProcessor(
+                    ingestionJobForSharedKnowledgeBases
+                  )
+                )
+                .next(releaseLockForSharedKnowledgeBases)
+                .next(mapQueuedBots)
+            ))
+            .otherwise(
+              // Otherwise, skip the processing related to shared Knowledge Bases.
+              mapQueuedBots.itemProcessor(
+                acquireLockForCustomBot
+                  .next(startCustomBotBuild)
+                  .next(finalizeCustomBotBuild)
+                  .next(
+                    mapIngestionJobsForCustomBot.itemProcessor(
+                      ingestionJobForCustomBot
+                    )
+                  )
+                  .next(updateSyncStatusSucceeded)
+                  .next(syncCustomBotFinished)
+              )
+            )
+        )
+    );
+
+    return new sfn.StateMachine(this, "StateMachine", {
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
     });
-    return this;
   }
 
-  private setupEventBridgePipe(props: EmbeddingProps): this {
-    if (!this._stateMachine) {
-      throw new Error(
-        "State machine must be set up before setting up the EventBridge pipe"
-      );
-    }
-
-    const pipeLogGroup = new logs.LogGroup(this, "PipeLogGroup", {
-      removalPolicy: RemovalPolicy.DESTROY,
-      retention: logs.RetentionDays.ONE_WEEK,
-    });
-    this._pipeRole = new iam.Role(this, "PipeRole", {
-      assumedBy: new iam.ServicePrincipal("pipes.amazonaws.com"),
-    });
-    this._pipeRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: [
-          "dynamodb:DescribeStream",
-          "dynamodb:GetRecords",
-          "dynamodb:GetShardIterator",
-          "dynamodb:ListStreams",
-        ],
-        resources: [props.database.botTable.tableStreamArn!],
-      })
-    );
-    this._pipeRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["states:StartExecution"],
-        resources: [this._stateMachine.stateMachineArn],
-      })
-    );
-    this._pipeRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ["logs:CreateLogStream", "logs:PutLogEvents"],
-        resources: [pipeLogGroup.logGroupArn],
-      })
-    );
-
-    new CfnPipe(this, "Pipe", {
-      source: props.database.botTable.tableStreamArn!,
-      sourceParameters: {
-        dynamoDbStreamParameters: {
-          batchSize: 1,
-          startingPosition: "LATEST",
-          maximumRetryAttempts: 1,
-        },
-        filterCriteria: {
-          filters: [
-            {
-              pattern:
-                '{"dynamodb":{"NewImage":{"SyncStatus":{"S":[{"prefix":"QUEUED"}]}}}}',
-            },
-          ],
-        },
-      },
-      target: this._stateMachine.stateMachineArn,
-      targetParameters: {
-        stepFunctionStateMachineParameters: {
-          invocationType: "FIRE_AND_FORGET",
-        },
-      },
-      logConfiguration: {
-        cloudwatchLogsLogDestination: {
-          logGroupArn: pipeLogGroup.logGroupArn,
-        },
-        level: "INFO",
-      },
-      roleArn: this._pipeRole.roleArn,
-    });
-
-    return this;
-  }
-
-  private setupRemovalHandler(props: EmbeddingProps): this {
+  private setupRemovalHandler(props: EmbeddingProps) {
     const removeHandlerRole = new iam.Role(this, "RemovalHandlerRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
     });
@@ -577,7 +659,7 @@ export class Embedding extends Construct {
     props.database.botTable.grantStreamRead(removeHandlerRole);
     props.documentBucket.grantReadWrite(removeHandlerRole);
 
-    this._removalHandler = new DockerImageFunction(this, "BotRemovalHandler", {
+    const removalHandler = new DockerImageFunction(this, "BotRemovalHandler", {
       code: DockerImageCode.fromImageAsset(
         path.join(__dirname, "../../../backend"),
         {
@@ -600,7 +682,7 @@ export class Embedding extends Construct {
       role: removeHandlerRole,
       logRetention: logs.RetentionDays.THREE_MONTHS,
     });
-    this._removalHandler.addEventSource(
+    removalHandler.addEventSource(
       new DynamoEventSource(props.database.botTable, {
         startingPosition: lambda.StartingPosition.TRIM_HORIZON,
         batchSize: 1,
@@ -613,30 +695,112 @@ export class Embedding extends Construct {
       })
     );
 
-    return this;
+    return removalHandler;
   }
 
-  private createUpdateSyncStatusTask(
-    id: string,
-    syncStatus: string,
-    syncStatusReason?: string,
-    lastExecIdPath?: string
-  ): tasks.LambdaInvoke {
-    const payload: { [key: string]: any } = {
-      "pk.$": "$.dynamodb.NewImage.PK.S",
-      "sk.$": "$.dynamodb.NewImage.SK.S",
-      sync_status: syncStatus,
-      sync_status_reason: syncStatusReason || "",
-    };
+  private createIngestionTask(idSuffix: string, {
+    timeout = Duration.hours(12),
+  }: {
+    timeout?: Duration,
+  }) {
+    // Perform direct ingestion or entire synchronization into the data source
+    const startIngestionJob = new tasks.LambdaInvoke(this, `StartIngestionJob${idSuffix}`, {
+      lambdaFunction: this._synchronizeDataSourceHandler,
+      payload: sfn.TaskInput.fromObject({
+        Action: "Ingest",
+        KnowledgeBaseId: sfn.JsonPath.stringAt("$.KnowledgeBaseId"),
+        DataSourceId: sfn.JsonPath.stringAt("$.DataSourceId"),
+        FilesDiffs: sfn.JsonPath.objectAt("$.FilesDiffs"),
+      }),
+      resultSelector: {
+        KnowledgeBaseId: sfn.JsonPath.stringAt("$.Payload.KnowledgeBaseId"),
+        DataSourceId: sfn.JsonPath.stringAt("$.Payload.DataSourceId"),
+        DocumentsDiff: sfn.JsonPath.objectAt("$.Payload.DocumentsDiff"),
+        IngestionJobId: sfn.JsonPath.stringAt("$.Payload.IngestionJobId"),
+      },
+      resultPath: "$.IngestionJob",
+    });
 
-    if (lastExecIdPath) {
-      payload["last_exec_id.$"] = lastExecIdPath;
-    }
-
-    return new tasks.LambdaInvoke(this, id, {
-      lambdaFunction: this._updateSyncStatusHandler,
-      payload: sfn.TaskInput.fromObject(payload),
+    // Check for the completion of direct ingestion or entire synchronization.
+    const checkIngestionJob = new tasks.LambdaInvoke(this, `CheckIngestionJob${idSuffix}`, {
+      lambdaFunction: this._synchronizeDataSourceHandler,
+      payload: sfn.TaskInput.fromObject({
+        Action: "Check",
+        IngestionJob: sfn.JsonPath.objectAt("$.IngestionJob"),
+      }),
       resultPath: sfn.JsonPath.DISCARD,
+    });
+
+    const ingestionComplete = new sfn.Pass(this, `IngestionComplete${idSuffix}`);
+    return startIngestionJob
+      .next(
+        checkIngestionJob.addRetry({
+          interval: Duration.seconds(15),
+          maxAttempts: timeout.toSeconds() / 15,
+          backoffRate: 1,
+          errors: [
+            'RetryException',
+          ],
+        }).addCatch(ingestionComplete, {
+          resultPath: sfn.JsonPath.stringAt('$.Error'),
+        })
+      ).next(ingestionComplete)
+  }
+
+  private createAcquireLockTask(idSuffix: string, {
+    name,
+    owner = sfn.JsonPath.executionName,
+    timeout = Duration.hours(12),
+    resultPath,
+  }: {
+    name: string;
+    owner?: string;
+    timeout?: Duration;
+    resultPath?: string;
+  }) {
+    // Acquire a distributed lock.
+    return new tasks.LambdaInvoke(this, `AcquireLock${idSuffix}`, {
+      lambdaFunction: this._lockHandler,
+      payload: sfn.TaskInput.fromObject({
+        Action: "Acquire",
+        LockName: name,
+        Owner: owner,
+      }),
+      resultSelector: {
+        LockId: sfn.JsonPath.stringAt("$.Payload.LockId"),
+      },
+      resultPath: resultPath,
+    }).addRetry({
+      interval: Duration.seconds(15),
+      maxAttempts: timeout.toSeconds() / 15,
+      backoffRate: 1,
+      errors: [
+        'RetryException',
+      ],
+    });
+  }
+
+  private createReleaseLockTask(idSuffix: string, {
+    name,
+    lockId,
+  }: {
+    name: string;
+    lockId: string;
+  }) {
+    // Release the acquired lock.
+    return new tasks.LambdaInvoke(this, `ReleaseLock${idSuffix}`, {
+      lambdaFunction: this._lockHandler,
+      payload: sfn.TaskInput.fromObject({
+        Action: "Release",
+        LockName: name,
+        LockId: lockId,
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    }).addRetry({
+      maxAttempts: 5,
+      errors: [
+        'RetryException',
+      ],
     });
   }
 }

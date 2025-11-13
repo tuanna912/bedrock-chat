@@ -22,14 +22,17 @@ from app.routes.schemas.bot_kb import (
     BedrockKnowledgeBaseOutput,
 )
 from app.routes.schemas.conversation import type_model_name
-from charset_normalizer.utils import is_punctuation
 from pydantic import (
     Discriminator,
     Field,
     create_model,
     field_validator,
-    model_validator,
     validator,
+)
+
+from app.repositories.models.custom_bot_kb import (
+    BedrockKnowledgeBaseModel,
+    calc_knowledge_base_hash,
 )
 
 if TYPE_CHECKING:
@@ -351,7 +354,62 @@ class BotModifyInput(BaseSchema):
             else:
                 return True
 
+        # Check if the Knowledge Base settings have been changed.
+        if self.bedrock_knowledge_base is not None:
+            if current_bot_model.bedrock_knowledge_base is None:
+                return True
+
+            knowledge_base_hash = calc_knowledge_base_hash(
+                BedrockKnowledgeBaseModel.model_validate(
+                    self.bedrock_knowledge_base.model_dump()
+                )
+            )
+            current_knowledge_base_hash = calc_knowledge_base_hash(
+                current_bot_model.bedrock_knowledge_base
+            )
+            if knowledge_base_hash != current_knowledge_base_hash:
+                return True
+
+        elif current_bot_model.bedrock_knowledge_base is not None:
+            return True
+
         return False
+
+    def is_sync_shared_knowledge_bases_required(
+        self, current_bot_model: BotModel
+    ) -> bool:
+        """Check if there have been any changes to the shared Knowledge Bases.
+
+        Args:
+            current_bot_model (BotModel): Current bot settings.
+
+        Returns:
+            bool: Whether there have been any changes to the shared Knowledge Bases.
+        """
+        if self.bedrock_knowledge_base is None:
+            if current_bot_model.bedrock_knowledge_base is None:
+                return False
+
+            return current_bot_model.bedrock_knowledge_base.type == "shared"
+
+        elif current_bot_model.bedrock_knowledge_base is None:
+            return self.bedrock_knowledge_base.type == "shared"
+
+        if (
+            self.bedrock_knowledge_base.type != "shared"
+            and current_bot_model.bedrock_knowledge_base.type != "shared"
+        ):
+            return False
+
+        knowledge_base_hash = calc_knowledge_base_hash(
+            BedrockKnowledgeBaseModel.model_validate(
+                self.bedrock_knowledge_base.model_dump()
+            )
+        )
+        current_knowledge_base_hash = calc_knowledge_base_hash(
+            current_bot_model.bedrock_knowledge_base
+        )
+        return knowledge_base_hash != current_knowledge_base_hash
 
 
 class BotModifyOutput(BaseSchema):

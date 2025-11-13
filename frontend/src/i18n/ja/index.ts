@@ -11,6 +11,9 @@ const translation: typeof en = {
     app: {
       name: 'Juno Chat',
       inputMessage: 'お手伝いできることはありますか？',
+      myBots: 'マイボット',
+      discoverBots: 'ボットを探す',
+      pinnedBots: 'ピン留めボット',
       starredBots: 'スター付きのボット',
       recentlyUsedBots: '最近使用したボット',
       conversationHistory: '最近のチャット',
@@ -39,6 +42,11 @@ const translation: typeof en = {
         label: 'Claude 4.5 (Sonnet)',
         description:
           'Sonnetの最新版。Claudeモデル最高レベルのコーディング性能と長時間タスク処理が可能',
+      },
+      'claude-v4.5-haiku': {
+        label: 'Claude 4.5 (Haiku)',
+        description:
+          'Haikuシリーズ最速かつ最高性能。フロンティアレベルの性能と拡張思考機能を搭載',
       },
       'claude-v3-haiku': {
         label: 'Claude 3 (Haiku)',
@@ -656,6 +664,7 @@ const translation: typeof en = {
     drawerOptionsDialog: {
       title: 'サイドメニューオプション',
       label: {
+        visibility: '表示設定',
         displayCount: '表示数',
       },
     },
@@ -943,16 +952,19 @@ const translation: typeof en = {
         },
       },
       advancedConfigration: {
-        existKnowledgeBaseId: {
+        existingKnowledgeBaseId: {
           label: '既存のAmazon Bedrock Knowledge BaseのID',
           description:
-            '既存のAmazon Bedrock Knowledge Baseを使用することができる',
-          createNewKb: {
-            label: '新規のナレッジを作成する',
-          },
-          existing: {
-            label: '外部のナレッジ(Knowledge Base)を利用する',
-          },
+            '既存のAmazon Bedrock Knowledge Baseを利用できます',
+        },
+        createDedicatedKnowledgeBase: {
+          label: '専用のKnowledge Baseを作成する',
+        },
+        createTenantInSharedKnowledgeBase: {
+          label: '共有のKnowledge Baseにテナントを作成する',
+        },
+        useExistingKnowledgeBase: {
+          label: '外部のKnowledge Baseを利用する',
         },
       },
     },
@@ -1062,11 +1074,11 @@ const translation: typeof en = {
         hint: 'このポリシーを使用して、モデル応答が参照ソースに基づいており、ユーザーの質問に関連しているかどうかを検証し、モデルの幻覚をフィルタリングします。',
         groundingThreshold: {
           label: '根拠',
-          hint: 'モデル応答が参照ソースに基づいて事実に即しているかどうかを確認し、定義された根拠の閾値を下回る応答をブロックします。0: 何もブロックしない, 0.99: ほぼすべてをブロックする',
+          hint: 'モデル応答が参照ソースに基づいて事実に即しているかどうかを確認し、定義された根拠の閾値を下回る応答をブロックします。0: 何もブロックしない, 1: ほぼすべてをブロックする',
         },
         relevanceThreshold: {
           label: '関連性',
-          hint: 'モデル応答がユーザーの質問に関連しているかどうかを確認し、関連性の閾値を下回る応答をブロックします。0: 何もブロックしない, 0.99: ほぼすべてをブロックする',
+          hint: 'モデル応答がユーザーの質問に関連しているかどうかを確認し、関連性の閾値を下回る応答をブロックします。0: 何もブロックしない, 1: ほぼすべてをブロックする',
         },
       },
     },

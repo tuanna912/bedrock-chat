@@ -6,6 +6,7 @@ const translation = {
     app: {
       name: 'Juno Chat',
       inputMessage: '입력해 주십시오',
+      pinnedBots: '고정된 봇',
     },
     deleteDialog: {
       title: '삭제 확인',

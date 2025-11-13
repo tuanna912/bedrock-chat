@@ -18,7 +18,7 @@ import {
   ConversationQuickStarter,
   ActiveModels,
 } from '../../../@types/bot';
-import { ParsingModel } from '../types';
+import { BedrockKnowledgeBaseType, ParsingModel } from '../types';
 import { ulid } from 'ulid';
 import {
   EDGE_GENERATION_PARAMS,
@@ -52,7 +52,7 @@ import {
 } from '../constants';
 import {
   GUARDRAILS_FILTERS_THRESHOLD,
-  GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD,
+  GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD,
 } from '../../../constants';
 import { Model } from '../../../@types/conversation';
 import { AVAILABLE_MODEL_KEYS } from '../../../constants/index';
@@ -128,8 +128,31 @@ const BotKbEditPage: React.FC = () => {
     string | null
   >(null);
   const [knowledgeBaseType, setKnowledgeBaseType] = useState<
-    'new' | 'existing'
-  >('new');
+    'new' | 'shared' | 'existing'
+  >('shared');
+
+  const bedrockKnowledgeBaseType = useMemo<BedrockKnowledgeBaseType>(() => {
+    if (existKnowledgeBaseId != null) {
+      return undefined;
+    }
+    switch (knowledgeBaseType) {
+      case 'new': {
+        if (files.length === 0 && urls.length === 0 && s3Urls.length === 0) {
+          return undefined;
+        }
+        return 'dedicated';
+      }
+      case 'shared': {
+        if (files.length === 0) {
+          return undefined;
+        }
+        return 'shared';
+      }
+      case 'existing': {
+        return undefined;
+      }
+    }
+  }, [existKnowledgeBaseId, knowledgeBaseType, files, urls, s3Urls]);
 
   // When loading an existing bot that already has a knowledge base id(s),
   // default the radio selection to 'existing' so the UI reflects the bot state.
@@ -155,6 +178,17 @@ const BotKbEditPage: React.FC = () => {
   const [relevanceThreshold, setRelevanceThreshold] = useState<number>(0);
   const [guardrailArn, setGuardrailArn] = useState<string>('');
   const [guardrailVersion, setGuardrailVersion] = useState<string>('');
+
+  const isGuardrailEnabled = useMemo(() => (
+    hateThreshold > 0 ||
+    insultsThreshold > 0 ||
+    sexualThreshold > 0 ||
+    violenceThreshold > 0 ||
+    misconductThreshold > 0 ||
+    groundingThreshold > 0 ||
+    relevanceThreshold > 0
+  ), [hateThreshold, insultsThreshold, sexualThreshold, violenceThreshold, misconductThreshold, groundingThreshold, relevanceThreshold]);
+
   const [parsingModel, setParsingModel] = useState<ParsingModel | undefined>(
     undefined
   );
@@ -482,6 +516,18 @@ const BotKbEditPage: React.FC = () => {
           setS3Urls(
             bot.knowledge.s3Urls.length === 0 ? [''] : bot.knowledge.s3Urls
           );
+          switch (bot.bedrockKnowledgeBase.type) {
+            case 'dedicated':
+              setKnowledgeBaseType('new');
+              break;
+
+            case 'shared':
+              setKnowledgeBaseType('shared');
+              break;
+
+            default:
+              break;
+          }
           setFiles(
             bot.knowledge.filenames.map((filename) => ({
               filename,
@@ -1256,7 +1302,8 @@ const BotKbEditPage: React.FC = () => {
         (qs) => qs.title !== '' && qs.example !== ''
       ),
       bedrockKnowledgeBase: {
-        knowledgeBaseId,
+        type: bedrockKnowledgeBaseType,
+        knowledgeBaseId: null,
         existKnowledgeBaseId,
         embeddingsModel,
         chunkingConfiguration: (() => {
@@ -1280,14 +1327,7 @@ const BotKbEditPage: React.FC = () => {
         webCrawlingFilters,
       },
       bedrockGuardrails: {
-        isGuardrailEnabled:
-          hateThreshold > 0 ||
-          insultsThreshold > 0 ||
-          sexualThreshold > 0 ||
-          violenceThreshold > 0 ||
-          misconductThreshold > 0 ||
-          groundingThreshold > 0 ||
-          relevanceThreshold > 0,
+        isGuardrailEnabled,
         hateThreshold: hateThreshold,
         insultsThreshold: insultsThreshold,
         sexualThreshold: sexualThreshold,
@@ -1328,7 +1368,7 @@ const BotKbEditPage: React.FC = () => {
     promptCachingEnabled,
     conversationQuickStarters,
     navigate,
-    knowledgeBaseId,
+    bedrockKnowledgeBaseType,
     existKnowledgeBaseId,
     embeddingsModel,
     chunkingStrategy,
@@ -1336,6 +1376,7 @@ const BotKbEditPage: React.FC = () => {
     hierarchicalParams,
     semanticParams,
     openSearchParams,
+    isGuardrailEnabled,
     hateThreshold,
     insultsThreshold,
     sexualThreshold,
@@ -1387,7 +1428,8 @@ const BotKbEditPage: React.FC = () => {
           (qs) => qs.title !== '' && qs.example !== ''
         ),
         bedrockKnowledgeBase: {
-          knowledgeBaseId,
+          type: bedrockKnowledgeBaseType,
+          knowledgeBaseId: (bedrockKnowledgeBaseType != null) ? knowledgeBaseId : null,
           existKnowledgeBaseId,
           embeddingsModel,
           chunkingConfiguration: (() => {
@@ -1411,14 +1453,7 @@ const BotKbEditPage: React.FC = () => {
           webCrawlingFilters,
         },
         bedrockGuardrails: {
-          isGuardrailEnabled:
-            hateThreshold > 0 ||
-            insultsThreshold > 0 ||
-            sexualThreshold > 0 ||
-            violenceThreshold > 0 ||
-            misconductThreshold > 0 ||
-            groundingThreshold > 0 ||
-            relevanceThreshold > 0,
+          isGuardrailEnabled,
           hateThreshold: hateThreshold,
           insultsThreshold: insultsThreshold,
           sexualThreshold: sexualThreshold,
@@ -1426,8 +1461,8 @@ const BotKbEditPage: React.FC = () => {
           misconductThreshold: misconductThreshold,
           groundingThreshold: groundingThreshold,
           relevanceThreshold: relevanceThreshold,
-          guardrailArn: guardrailArn,
-          guardrailVersion: guardrailVersion,
+          guardrailArn: (isGuardrailEnabled) ? guardrailArn : '',
+          guardrailVersion: (isGuardrailEnabled) ? guardrailVersion : '',
         },
         activeModels,
       })
@@ -1463,6 +1498,7 @@ const BotKbEditPage: React.FC = () => {
     promptCachingEnabled,
     conversationQuickStarters,
     navigate,
+    bedrockKnowledgeBaseType,
     knowledgeBaseId,
     existKnowledgeBaseId,
     embeddingsModel,
@@ -1471,6 +1507,7 @@ const BotKbEditPage: React.FC = () => {
     hierarchicalParams,
     semanticParams,
     openSearchParams,
+    isGuardrailEnabled,
     hateThreshold,
     insultsThreshold,
     sexualThreshold,
@@ -1565,16 +1602,25 @@ const BotKbEditPage: React.FC = () => {
                     value="new"
                     checked={knowledgeBaseType === 'new'}
                     label={t(
-                      'knowledgeBaseSettings.advancedConfigration.existKnowledgeBaseId.createNewKb.label'
+                      'knowledgeBaseSettings.advancedConfigration.createDedicatedKnowledgeBase.label'
                     )}
                     onChange={() => setKnowledgeBaseType('new')}
+                  />
+                  <RadioButton
+                    name="knowledgeBaseType"
+                    value="shared"
+                    checked={knowledgeBaseType === 'shared'}
+                    label={t(
+                      'knowledgeBaseSettings.advancedConfigration.createTenantInSharedKnowledgeBase.label'
+                    )}
+                    onChange={() => setKnowledgeBaseType('shared')}
                   />
                   <RadioButton
                     name="knowledgeBaseType"
                     value="existing"
                     checked={knowledgeBaseType === 'existing'}
                     label={t(
-                      'knowledgeBaseSettings.advancedConfigration.existKnowledgeBaseId.existing.label'
+                      'knowledgeBaseSettings.advancedConfigration.useExistingKnowledgeBase.label'
                     )}
                     onChange={() => setKnowledgeBaseType('existing')}
                   />
@@ -1586,7 +1632,7 @@ const BotKbEditPage: React.FC = () => {
                       <div className="mt-3 rounded-lg border border-aws-font-color-light/30 p-4 dark:border-aws-font-color-dark/30">
                         <InputText
                           label={t(
-                            'knowledgeBaseSettings.advancedConfigration.existKnowledgeBaseId.label'
+                            'knowledgeBaseSettings.advancedConfigration.existingKnowledgeBaseId.label'
                           )}
                           value={existKnowledgeBaseId ?? ''}
                           onChange={setExistKnowledgeBaseId}
@@ -1595,7 +1641,7 @@ const BotKbEditPage: React.FC = () => {
                         />
                         <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
                           {t(
-                            'knowledgeBaseSettings.advancedConfigration.existKnowledgeBaseId.description'
+                            'knowledgeBaseSettings.advancedConfigration.existingKnowledgeBaseId.description'
                           )}
                         </div>
                       </div>
@@ -1618,7 +1664,7 @@ const BotKbEditPage: React.FC = () => {
                     );
                   }
 
-                  if (knowledgeBaseType === 'new') {
+                  if (knowledgeBaseType === 'new' || knowledgeBaseType === 'shared') {
                     return (
                       <div className="mt-3 rounded-lg border border-aws-font-color-light/30 p-4 dark:border-aws-font-color-dark/30">
                         <div className="mt-3">
@@ -1641,234 +1687,238 @@ const BotKbEditPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="mt-4">
-                          <div className="font-semibold">
-                            {t('bot.label.s3url')}
-                          </div>
-                          <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
-                            {t('bot.help.knowledge.s3url')}
-                          </div>
-                          <div className="mt-2 flex w-full flex-col gap-1">
-                            {s3Urls.map((s3Url, idx) => (
-                              <div className="flex w-full gap-2" key={idx}>
-                                <InputText
-                                  className="w-full"
-                                  type="text"
-                                  disabled={isLoading || disabledKnowledgeEdit}
-                                  value={s3Url}
-                                  placeholder={
-                                    's3://example-bucket/path/to/data-source/'
-                                  }
-                                  onChange={(s) => {
-                                    onChangeS3Url(s, idx);
-                                  }}
-                                  errorMessage={errorMessages[`s3Urls-${idx}`]}
-                                />
-                                <ButtonIcon
-                                  className="text-red"
-                                  disabled={
-                                    (s3Urls.length === 1 && !s3Url[0]) ||
-                                    isLoading ||
-                                    disabledKnowledgeEdit
-                                  }
-                                  onClick={() => {
-                                    onClickRemoveS3Url(idx);
-                                  }}>
-                                  <PiTrash />
-                                </ButtonIcon>
+                        {knowledgeBaseType === 'new' && (
+                          <>
+                            <div className="mt-4">
+                              <div className="font-semibold">
+                                {t('bot.label.s3url')}
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-2">
-                            <Button
-                              outlined
-                              icon={<PiPlus />}
-                              disabled={
-                                s3Urls.length >= 4 || disabledKnowledgeEdit
-                              }
-                              onClick={onClickAddS3Url}>
-                              {t('button.add')}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="mt-4">
-                          <div className="font-semibold">
-                            {t('bot.label.url')}
-                          </div>
-                          <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
-                            {t('bot.help.knowledge.url')}
-                          </div>
-                          <div className="mt-2 flex w-full flex-col gap-1">
-                            {urls.map((url, idx) => (
-                              <div className="flex w-full gap-2" key={idx}>
-                                <InputText
-                                  className="w-full"
-                                  type="text"
-                                  disabled={isLoading || disabledKnowledgeEdit}
-                                  value={url}
-                                  placeholder="https://example.com"
-                                  onChange={(s) => {
-                                    onChangeUrls(s, idx);
-                                  }}
-                                  errorMessage={errorMessages[`urls-${idx}`]}
-                                />
-                                <ButtonIcon
-                                  className="text-red"
-                                  disabled={
-                                    (urls.length === 1 && !url[0]) ||
-                                    isLoading ||
-                                    disabledKnowledgeEdit
-                                  }
-                                  onClick={() => {
-                                    onClickRemoveUrls(idx);
-                                  }}>
-                                  <PiTrash />
-                                </ButtonIcon>
+                              <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                                {t('bot.help.knowledge.s3url')}
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-2">
-                            <Button
-                              outlined
-                              icon={<PiPlus />}
-                              disabled={
-                                urls.length >= 10 || disabledKnowledgeEdit
-                              }
-                              onClick={onClickAddUrls}>
-                              {t('button.add')}
-                            </Button>
-                          </div>
+                              <div className="mt-2 flex w-full flex-col gap-1">
+                                {s3Urls.map((s3Url, idx) => (
+                                  <div className="flex w-full gap-2" key={idx}>
+                                    <InputText
+                                      className="w-full"
+                                      type="text"
+                                      disabled={isLoading || disabledKnowledgeEdit}
+                                      value={s3Url}
+                                      placeholder={
+                                        's3://example-bucket/path/to/data-source/'
+                                      }
+                                      onChange={(s) => {
+                                        onChangeS3Url(s, idx);
+                                      }}
+                                      errorMessage={errorMessages[`s3Urls-${idx}`]}
+                                    />
+                                    <ButtonIcon
+                                      className="text-red"
+                                      disabled={
+                                        (s3Urls.length === 1 && !s3Url[0]) ||
+                                        isLoading ||
+                                        disabledKnowledgeEdit
+                                      }
+                                      onClick={() => {
+                                        onClickRemoveS3Url(idx);
+                                      }}>
+                                      <PiTrash />
+                                    </ButtonIcon>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-2">
+                                <Button
+                                  outlined
+                                  icon={<PiPlus />}
+                                  disabled={
+                                    s3Urls.length >= 4 || disabledKnowledgeEdit
+                                  }
+                                  onClick={onClickAddS3Url}>
+                                  {t('button.add')}
+                                </Button>
+                              </div>
+                            </div>
 
-                          <ExpandableDrawerGroup
-                            isDefaultShow={false}
-                            label={t(
-                              'knowledgeBaseSettings.webCrawlerConfig.title'
-                            )}
-                            className="py-2">
-                            <div className="mt-3">
-                              <Select
+                            <div className="mt-4">
+                              <div className="font-semibold">
+                                {t('bot.label.url')}
+                              </div>
+                              <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                                {t('bot.help.knowledge.url')}
+                              </div>
+                              <div className="mt-2 flex w-full flex-col gap-1">
+                                {urls.map((url, idx) => (
+                                  <div className="flex w-full gap-2" key={idx}>
+                                    <InputText
+                                      className="w-full"
+                                      type="text"
+                                      disabled={isLoading || disabledKnowledgeEdit}
+                                      value={url}
+                                      placeholder="https://example.com"
+                                      onChange={(s) => {
+                                        onChangeUrls(s, idx);
+                                      }}
+                                      errorMessage={errorMessages[`urls-${idx}`]}
+                                    />
+                                    <ButtonIcon
+                                      className="text-red"
+                                      disabled={
+                                        (urls.length === 1 && !url[0]) ||
+                                        isLoading ||
+                                        disabledKnowledgeEdit
+                                      }
+                                      onClick={() => {
+                                        onClickRemoveUrls(idx);
+                                      }}>
+                                      <PiTrash />
+                                    </ButtonIcon>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-2">
+                                <Button
+                                  outlined
+                                  icon={<PiPlus />}
+                                  disabled={
+                                    urls.length >= 10 || disabledKnowledgeEdit
+                                  }
+                                  onClick={onClickAddUrls}>
+                                  {t('button.add')}
+                                </Button>
+                              </div>
+
+                              <ExpandableDrawerGroup
+                                isDefaultShow={false}
                                 label={t(
-                                  'knowledgeBaseSettings.webCrawlerConfig.crawlingScope.label'
+                                  'knowledgeBaseSettings.webCrawlerConfig.title'
                                 )}
-                                value={webCrawlingScope}
-                                options={webCrawlingScopeOptions}
-                                onChange={(val) => {
-                                  setWebCrawlingScope(val as WebCrawlingScope);
-                                }}
-                                disabled={disabledKnowledgeEdit}
-                              />
-                            </div>
+                                className="py-2">
+                                <div className="mt-3">
+                                  <Select
+                                    label={t(
+                                      'knowledgeBaseSettings.webCrawlerConfig.crawlingScope.label'
+                                    )}
+                                    value={webCrawlingScope}
+                                    options={webCrawlingScopeOptions}
+                                    onChange={(val) => {
+                                      setWebCrawlingScope(val as WebCrawlingScope);
+                                    }}
+                                    disabled={disabledKnowledgeEdit}
+                                  />
+                                </div>
 
-                            <div className="mt-4">
-                              <div className="font-semibold">
-                                {t(
-                                  'knowledgeBaseSettings.webCrawlerConfig.includePatterns.label'
-                                )}
-                              </div>
-                              <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
-                                {t(
-                                  'knowledgeBaseSettings.webCrawlerConfig.includePatterns.hint'
-                                )}
-                              </div>
-                              <div className="mt-2 flex w-full flex-col gap-1">
-                                {webCrawlingFilters.includePatterns.map(
-                                  (pattern, idx) => (
-                                    <div
-                                      className="flex w-full gap-2"
-                                      key={idx}>
-                                      <InputText
-                                        className="w-full"
-                                        type="text"
-                                        disabled={isLoading}
-                                        value={pattern}
-                                        placeholder=".*\.html$"
-                                        onChange={(s) => {
-                                          onChangeIncludePattern(s, idx);
-                                        }}
-                                      />
-                                      <ButtonIcon
-                                        className="text-red"
-                                        disabled={
-                                          (webCrawlingFilters.includePatterns
-                                            .length === 1 &&
-                                            !pattern) ||
-                                          isLoading
-                                        }
-                                        onClick={() => {
-                                          onClickRemoveIncludePattern(idx);
-                                        }}>
-                                        <PiTrash />
-                                      </ButtonIcon>
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                              <div className="mt-2">
-                                <Button
-                                  outlined
-                                  icon={<PiPlus />}
-                                  onClick={onClickAddIncludePattern}>
-                                  {t('button.add')}
-                                </Button>
-                              </div>
-                            </div>
+                                <div className="mt-4">
+                                  <div className="font-semibold">
+                                    {t(
+                                      'knowledgeBaseSettings.webCrawlerConfig.includePatterns.label'
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                                    {t(
+                                      'knowledgeBaseSettings.webCrawlerConfig.includePatterns.hint'
+                                    )}
+                                  </div>
+                                  <div className="mt-2 flex w-full flex-col gap-1">
+                                    {webCrawlingFilters.includePatterns.map(
+                                      (pattern, idx) => (
+                                        <div
+                                          className="flex w-full gap-2"
+                                          key={idx}>
+                                          <InputText
+                                            className="w-full"
+                                            type="text"
+                                            disabled={isLoading}
+                                            value={pattern}
+                                            placeholder=".*\.html$"
+                                            onChange={(s) => {
+                                              onChangeIncludePattern(s, idx);
+                                            }}
+                                          />
+                                          <ButtonIcon
+                                            className="text-red"
+                                            disabled={
+                                              (webCrawlingFilters.includePatterns
+                                                .length === 1 &&
+                                                !pattern) ||
+                                              isLoading
+                                            }
+                                            onClick={() => {
+                                              onClickRemoveIncludePattern(idx);
+                                            }}>
+                                            <PiTrash />
+                                          </ButtonIcon>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                  <div className="mt-2">
+                                    <Button
+                                      outlined
+                                      icon={<PiPlus />}
+                                      onClick={onClickAddIncludePattern}>
+                                      {t('button.add')}
+                                    </Button>
+                                  </div>
+                                </div>
 
-                            <div className="mt-4">
-                              <div className="font-semibold">
-                                {t(
-                                  'knowledgeBaseSettings.webCrawlerConfig.excludePatterns.label'
-                                )}
-                              </div>
-                              <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
-                                {t(
-                                  'knowledgeBaseSettings.webCrawlerConfig.excludePatterns.hint'
-                                )}
-                              </div>
-                              <div className="mt-2 flex w-full flex-col gap-1">
-                                {webCrawlingFilters.excludePatterns.map(
-                                  (pattern, idx) => (
-                                    <div
-                                      className="flex w-full gap-2"
-                                      key={idx}>
-                                      <InputText
-                                        className="w-full"
-                                        type="text"
-                                        disabled={isLoading}
-                                        value={pattern}
-                                        placeholder=".*\.pdf$"
-                                        onChange={(s) => {
-                                          onChangeExcludePattern(s, idx);
-                                        }}
-                                      />
-                                      <ButtonIcon
-                                        className="text-red"
-                                        disabled={
-                                          (webCrawlingFilters.excludePatterns
-                                            .length === 1 &&
-                                            !pattern) ||
-                                          isLoading
-                                        }
-                                        onClick={() => {
-                                          onClickRemoveExcludePattern(idx);
-                                        }}>
-                                        <PiTrash />
-                                      </ButtonIcon>
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                              <div className="mt-2">
-                                <Button
-                                  outlined
-                                  icon={<PiPlus />}
-                                  onClick={onClickAddExcludePattern}>
-                                  {t('button.add')}
-                                </Button>
-                              </div>
+                                <div className="mt-4">
+                                  <div className="font-semibold">
+                                    {t(
+                                      'knowledgeBaseSettings.webCrawlerConfig.excludePatterns.label'
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-aws-font-color-light/50 dark:text-aws-font-color-dark">
+                                    {t(
+                                      'knowledgeBaseSettings.webCrawlerConfig.excludePatterns.hint'
+                                    )}
+                                  </div>
+                                  <div className="mt-2 flex w-full flex-col gap-1">
+                                    {webCrawlingFilters.excludePatterns.map(
+                                      (pattern, idx) => (
+                                        <div
+                                          className="flex w-full gap-2"
+                                          key={idx}>
+                                          <InputText
+                                            className="w-full"
+                                            type="text"
+                                            disabled={isLoading}
+                                            value={pattern}
+                                            placeholder=".*\.pdf$"
+                                            onChange={(s) => {
+                                              onChangeExcludePattern(s, idx);
+                                            }}
+                                          />
+                                          <ButtonIcon
+                                            className="text-red"
+                                            disabled={
+                                              (webCrawlingFilters.excludePatterns
+                                                .length === 1 &&
+                                                !pattern) ||
+                                              isLoading
+                                            }
+                                            onClick={() => {
+                                              onClickRemoveExcludePattern(idx);
+                                            }}>
+                                            <PiTrash />
+                                          </ButtonIcon>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                  <div className="mt-2">
+                                    <Button
+                                      outlined
+                                      icon={<PiPlus />}
+                                      onClick={onClickAddExcludePattern}>
+                                      {t('button.add')}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </ExpandableDrawerGroup>
                             </div>
-                          </ExpandableDrawerGroup>
-                        </div>
+                          </>
+                        )}
                       </div>
                     );
                   }
@@ -2549,9 +2599,9 @@ const BotKbEditPage: React.FC = () => {
                       'guardrails.contextualGroundingCheck.groundingThreshold.label'
                     )}
                     range={{
-                      min: GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD.MIN,
-                      max: GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD.MAX,
-                      step: GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD.STEP,
+                      min: GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD.MIN,
+                      max: GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD.MAX,
+                      step: GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD.STEP,
                     }}
                     onChange={(groundingThreshold) => {
                       setGroundingThreshold(groundingThreshold);
@@ -2570,9 +2620,9 @@ const BotKbEditPage: React.FC = () => {
                       'guardrails.contextualGroundingCheck.relevanceThreshold.label'
                     )}
                     range={{
-                      min: GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD.MIN,
-                      max: GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD.MAX,
-                      step: GUARDRAILS_CONTECTUAL_GROUNDING_THRESHOLD.STEP,
+                      min: GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD.MIN,
+                      max: GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD.MAX,
+                      step: GUARDRAILS_CONTEXTUAL_GROUNDING_THRESHOLD.STEP,
                     }}
                     onChange={(relevanceThreshold) => {
                       setRelevanceThreshold(relevanceThreshold);

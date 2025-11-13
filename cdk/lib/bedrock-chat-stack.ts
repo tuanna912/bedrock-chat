@@ -25,6 +25,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { BedrockCustomBotCodebuild } from "./constructs/bedrock-custom-bot-codebuild";
+import { BedrockSharedKnowledgeBasesCodebuild } from "./constructs/bedrock-shared-knowledge-bases-codebuild";
 import { BotStore, Language } from "./constructs/bot-store";
 import { Duration } from "aws-cdk-lib";
 
@@ -45,6 +46,7 @@ export interface BedrockChatStackProps extends StackProps {
   readonly enableIpV6: boolean;
   readonly documentBucket: Bucket;
   readonly enableRagReplicas: boolean;
+  readonly enableBedrockGlobalInference: boolean;
   readonly enableBedrockCrossRegionInference: boolean;
   readonly enableLambdaSnapStart: boolean;
   readonly enableBotStore: boolean;
@@ -56,7 +58,7 @@ export interface BedrockChatStackProps extends StackProps {
   readonly hostedZoneId?: string;
   readonly devAccessIamRoleArn?: string;
   readonly allowedCountries?: string[];
-  readonly memoryCompressionThreshold?: number;
+  readonly logoPath?: string;
 }
 
 export class BedrockChatStack extends cdk.Stack {
@@ -142,6 +144,17 @@ export class BedrockChatStack extends cdk.Stack {
         bedrockRegion: props.bedrockRegion,
       }
     );
+    // CodeBuild used for KnowledgeBase
+    const bedrockSharedKnowledgeBasesCodebuild = new BedrockSharedKnowledgeBasesCodebuild(
+      this,
+      "BedrockSharedKnowledgeBasesCodebuild",
+      {
+        sourceBucket,
+        envName: props.envName,
+        envPrefix: props.envPrefix,
+        bedrockRegion: props.bedrockRegion,
+      }
+    );
 
     const frontend = new Frontend(this, "Frontend", {
       accessLogBucket,
@@ -209,6 +222,15 @@ export class BedrockChatStack extends cdk.Stack {
       sourceDatabase: database,
     });
 
+    const embedding = new Embedding(this, "Embedding", {
+      bedrockRegion: props.bedrockRegion,
+      database,
+      documentBucket: props.documentBucket,
+      bedrockCustomBotProject: bedrockCustomBotCodebuild.project,
+      bedrockSharedKnowledgeBasesProject: bedrockSharedKnowledgeBasesCodebuild.project,
+      enableRagReplicas: props.enableRagReplicas,
+    });
+
     const backendApi = new Api(this, "BackendApi", {
       envName: props.envName,
       envPrefix: props.envPrefix,
@@ -218,14 +240,18 @@ export class BedrockChatStack extends cdk.Stack {
       documentBucket: props.documentBucket,
       apiPublishProject: apiPublishCodebuild.project,
       bedrockCustomBotProject: bedrockCustomBotCodebuild.project,
+      bedrockSharedKnowledgeBasesProject: bedrockSharedKnowledgeBasesCodebuild.project,
+      embeddingStateMachine: embedding.stateMachine,
       usageAnalysis,
       largeMessageBucket,
+      enableBedrockGlobalInference:
+        props.enableBedrockGlobalInference,
       enableBedrockCrossRegionInference:
         props.enableBedrockCrossRegionInference,
       enableLambdaSnapStart: props.enableLambdaSnapStart,
       openSearchEndpoint: botStore?.openSearchEndpoint,
       globalAvailableModels: props.globalAvailableModels,
-      memoryCompressionThreshold: props.memoryCompressionThreshold,
+      logoPath: props.logoPath,
     });
     props.documentBucket.grantReadWrite(backendApi.handler);
     // Add permissions to API handler for BotStore
@@ -266,11 +292,12 @@ export class BedrockChatStack extends cdk.Stack {
     const websocket = new WebSocket(this, "WebSocket", {
       accessLogBucket,
       database,
-      websocketSessionTable: database.websocketSessionTable,
       auth,
       bedrockRegion: props.bedrockRegion,
       largeMessageBucket,
       documentBucket: props.documentBucket,
+      enableBedrockGlobalInference:
+        props.enableBedrockGlobalInference,
       enableBedrockCrossRegionInference:
         props.enableBedrockCrossRegionInference,
       enableLambdaSnapStart: props.enableLambdaSnapStart,
@@ -296,14 +323,6 @@ export class BedrockChatStack extends cdk.Stack {
       maxAge: 3000,
     });
 
-    const embedding = new Embedding(this, "Embedding", {
-      bedrockRegion: props.bedrockRegion,
-      database,
-      documentBucket: props.documentBucket,
-      bedrockCustomBotProject: bedrockCustomBotCodebuild.project,
-      enableRagReplicas: props.enableRagReplicas,
-    });
-
     // WebAcl for published API
     const webAclForPublishedApi = new WebAclForPublishedApi(
       this,
@@ -320,6 +339,9 @@ export class BedrockChatStack extends cdk.Stack {
     });
     new CfnOutput(this, "FrontendURL", {
       value: frontend.getOrigin(),
+    });
+    new CfnOutput(this, "CloudFrontURL", {
+      value: `https://${frontend.cloudFrontWebDistribution.distributionDomainName}`,
     });
 
     // Outputs for API publication
@@ -342,6 +364,9 @@ export class BedrockChatStack extends cdk.Stack {
     new CfnOutput(this, "LargeMessageBucketName", {
       value: largeMessageBucket.bucketName,
       exportName: `${props.envPrefix}${sepHyphen}BedrockClaudeChatLargeMessageBucketName`,
+    });
+    new CfnOutput(this, 'EmbeddingStateMachineArn', {
+      value: embedding.stateMachine.stateMachineArn,
     });
   }
 }

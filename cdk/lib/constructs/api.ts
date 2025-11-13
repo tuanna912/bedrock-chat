@@ -22,6 +22,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as codebuild from "aws-cdk-lib/aws-codebuild";
+import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { UsageAnalysis } from "./usage-analysis";
 import { excludeDockerImage } from "../constants/docker";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
@@ -38,12 +39,15 @@ export interface ApiProps {
   readonly largeMessageBucket: IBucket;
   readonly apiPublishProject: codebuild.IProject;
   readonly bedrockCustomBotProject: codebuild.IProject;
+  readonly bedrockSharedKnowledgeBasesProject: codebuild.IProject;
+  readonly embeddingStateMachine: sfn.IStateMachine;
   readonly usageAnalysis?: UsageAnalysis;
+  readonly enableBedrockGlobalInference: boolean;
   readonly enableBedrockCrossRegionInference: boolean;
   readonly enableLambdaSnapStart: boolean;
   readonly openSearchEndpoint?: string;
   readonly globalAvailableModels?: string[];
-  readonly memoryCompressionThreshold?: number;
+  readonly logoPath?: string;
 }
 
 export class Api extends Construct {
@@ -86,9 +90,11 @@ export class Api extends Construct {
         resources: [
           props.apiPublishProject.projectArn,
           props.bedrockCustomBotProject.projectArn,
+          props.bedrockSharedKnowledgeBasesProject.projectArn,
         ],
       })
     );
+    props.embeddingStateMachine.grantStartExecution(handlerRole);
     handlerRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -109,6 +115,7 @@ export class Api extends Construct {
         resources: [
           props.apiPublishProject.projectArn,
           props.bedrockCustomBotProject.projectArn,
+          props.bedrockSharedKnowledgeBasesProject.projectArn,
         ],
       })
     );
@@ -196,7 +203,8 @@ export class Api extends Construct {
         effect: iam.Effect.ALLOW,
         actions: ["aoss:DescribeIndex", "aoss:ReadDocument"],
         resources: [
-          `arn:aws:aoss:${Stack.of(this).region}:${Stack.of(this).account
+          `arn:aws:aoss:${Stack.of(this).region}:${
+            Stack.of(this).account
           }:collection/*`,
         ],
       })
@@ -218,7 +226,8 @@ export class Api extends Construct {
           "secretsmanager:TagResource",
         ],
         resources: [
-          `arn:aws:secretsmanager:${Stack.of(this).region}:${Stack.of(this).account
+          `arn:aws:secretsmanager:${Stack.of(this).region}:${
+            Stack.of(this).account
           }:secret:firecrawl/*/*`,
         ],
       })
@@ -232,10 +241,7 @@ export class Api extends Construct {
       index: "app/main.py",
       bundling: {
         assetExcludes: [...excludeDockerImage],
-        buildArgs: {
-          POETRY_VERSION: "1.8.3",
-          PIP_NO_CACHE_DIR: "1"
-        },
+        buildArgs: { POETRY_VERSION: "1.8.3" },
       },
       runtime: Runtime.PYTHON_3_13,
       architecture: Architecture.X86_64,
@@ -256,21 +262,23 @@ export class Api extends Construct {
         DOCUMENT_BUCKET: props.documentBucket.bucketName,
         LARGE_MESSAGE_BUCKET: props.largeMessageBucket.bucketName,
         PUBLISH_API_CODEBUILD_PROJECT_NAME: props.apiPublishProject.projectName,
-        // KNOWLEDGE_BASE_CODEBUILD_PROJECT_NAME:
-        //   props.bedrockCustomBotProject.projectName,
+        EMBEDDING_STATE_MACHINE_ARN: props.embeddingStateMachine.stateMachineArn,
         USAGE_ANALYSIS_DATABASE:
           props.usageAnalysis?.database.databaseName || "",
         USAGE_ANALYSIS_TABLE:
           props.usageAnalysis?.ddbExportTable.tableName || "",
         USAGE_ANALYSIS_WORKGROUP: props.usageAnalysis?.workgroupName || "",
         USAGE_ANALYSIS_OUTPUT_LOCATION: usageAnalysisOutputLocation,
+        ENABLE_BEDROCK_GLOBAL_INFERENCE:
+          props.enableBedrockGlobalInference.toString(),
         ENABLE_BEDROCK_CROSS_REGION_INFERENCE:
           props.enableBedrockCrossRegionInference.toString(),
-        GLOBAL_AVAILABLE_MODELS: props.globalAvailableModels
+        GLOBAL_AVAILABLE_MODELS: props.globalAvailableModels 
           ? JSON.stringify(props.globalAvailableModels)
           : "[]",
         OPENSEARCH_DOMAIN_ENDPOINT: props.openSearchEndpoint || "",
-        MEMORY_COMPRESSION_THRESHOLD: props.memoryCompressionThreshold?.toString() || "10",
+        LOGO_PATH: props.logoPath || "",
+        USE_STRANDS: "true",
         AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
         PORT: "8000",
       },
@@ -284,7 +292,8 @@ export class Api extends Construct {
           this,
           "LwaLayer",
           // https://github.com/awslabs/aws-lambda-web-adapter?tab=readme-ov-file#lambda-functions-packaged-as-zip-package-for-aws-managed-runtimes
-          `arn:aws:lambda:${Stack.of(this).region
+          `arn:aws:lambda:${
+            Stack.of(this).region
           }:753240598075:layer:LambdaAdapterLayerX86:23`
         ),
       ],

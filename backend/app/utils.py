@@ -2,13 +2,13 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 import boto3
-from app.repositories.models.custom_bot_guardrails import BedrockGuardrailsModel
-from app.user import User
 from botocore.client import Config
 from botocore.exceptions import ClientError
+
+from app.user import User
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -25,6 +25,7 @@ PUBLISH_API_CODEBUILD_PROJECT_NAME = os.environ.get(
     "PUBLISH_API_CODEBUILD_PROJECT_NAME", ""
 )
 USER_POOL_ID = os.environ.get("USER_POOL_ID", "")
+EMBEDDING_STATE_MACHINE_ARN = os.environ.get("EMBEDDING_STATE_MACHINE_ARN")
 
 
 def snake_to_camel(snake_str):
@@ -312,3 +313,43 @@ def delete_api_key_from_secret_manager(user_id: str, bot_id: str, prefix: str) -
     except ClientError as e:
         logger.error(f"Error accessing Secrets Manager: {e}")
         raise
+
+
+def start_embedding_state_machine(
+    user_id: str,
+    bot_id: str,
+    added_filenames: list[str],
+    unchanged_filenames: list[str],
+    deleted_filenames: list[str],
+    sync_shared_knowledge_bases_required: bool,
+):
+    """Start the Embedding state machine for `QUEUED` bot.
+
+    Args:
+        user_id (str): User ID of the bot.
+        bot_id (str): Bot ID.
+        added_filenames (list[str]): Files added to the bot.
+        unchanged_filenames (list[str]): Files unchanged in the bot.
+        deleted_filenames (list[str]): Files deleted from the bot.
+        sync_shared_knowledge_bases_required (bool): Whether there have been any changes to the shared Knowledge Bases.
+    """
+    client = boto3.client("stepfunctions")
+    client.start_execution(
+        stateMachineArn=EMBEDDING_STATE_MACHINE_ARN,
+        input=json.dumps(
+            {
+                "QueuedBots": [
+                    {
+                        "OwnerUserId": user_id,
+                        "BotId": bot_id,
+                        "FilesDiff": {
+                            "Added": added_filenames,
+                            "Unchanged": unchanged_filenames,
+                            "Deleted": deleted_filenames,
+                        },
+                        "SyncSharedKnowledgeBasesRequired": sync_shared_knowledge_bases_required,
+                    },
+                ],
+            }
+        ),
+    )

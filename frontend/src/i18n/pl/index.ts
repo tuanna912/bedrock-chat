@@ -8,6 +8,7 @@ const translation = {
     app: {
       name: 'Juno Chat',
       inputMessage: 'Jak mogę pomóc?',
+      pinnedBots: 'Przypięte boty',
       starredBots: 'Ulubione Boty',
       recentlyUsedBots: 'Ostatnio używane Boty',
       conversationHistory: 'Historia',
@@ -726,16 +727,19 @@ Jak sklasyfikowałbyś ten e-mail?`,
         },
       },
       advancedConfigration: {
-        existKnowledgeBaseId: {
+        existingKnowledgeBaseId: {
           label: 'ID dla bazy wiedzy Amazon Bedrock',
           description:
             'Proszę podać ID istniejącej Bazy Wiedzy Amazon Bedrock.',
-          createNewKb: {
-            label: 'Utwórz nową Bazę Wiedzy',
-          },
-          existing: {
-            label: 'Użyj istniejącej Bazy Wiedzy',
-          },
+        },
+        createDedicatedKnowledgeBase: {
+          label: 'Utwórz dedykowaną Bazę Wiedzy',
+        },
+        createTenantInSharedKnowledgeBase: {
+          label: 'Utwórz najemcę w udostępnionej Bazy Wiedzy',
+        },
+        useExistingKnowledgeBase: {
+          label: 'Użyj istniejącej Bazy Wiedzy',
         },
       },
     },
@@ -825,11 +829,11 @@ Jak sklasyfikowałbyś ten e-mail?`,
         hint: 'Użyj tej polityki, aby sprawdzić, czy odpowiedzi modelu mają odzwierciedlenie w źródle referencyjnym i są adekwatne do zapytania użytkownika, aby filtrować niepoprawne.',
         groundingThreshold: {
           label: 'Ugruntowanie',
-          hint: 'Sprawdź, czy odpowiedzi modelu mają odzwierciedlenie i są oparte o informacje dostarczone w źródle referencyjnym, i blokuj odpowiedzi, które są poniżej zdefiniowanego progu ugruntowania. 0: nie blokuje nic, 0.99: blokuje prawie wszystko',
+          hint: 'Sprawdź, czy odpowiedzi modelu mają odzwierciedlenie i są oparte o informacje dostarczone w źródle referencyjnym, i blokuj odpowiedzi, które są poniżej zdefiniowanego progu ugruntowania. 0: nie blokuje nic, 1: blokuje prawie wszystko',
         },
         relevanceThreshold: {
           label: 'Trafność',
-          hint: 'Sprawdź, czy odpowiedzi modelu są odpowiednie do zapytania użytkownika i blokuj odpowiedzi, które są poniżej zdefiniowanego progu trafności. 0: nie blokuje nic, 0.99: blokuje prawie wszystko',
+          hint: 'Sprawdź, czy odpowiedzi modelu są odpowiednie do zapytania użytkownika i blokuj odpowiedzi, które są poniżej zdefiniowanego progu trafności. 0: nie blokuje nic, 1: blokuje prawie wszystko',
         },
       },
     },

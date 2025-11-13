@@ -8,6 +8,7 @@ const translation = {
     app: {
       name: 'Juno Chat',
       inputMessage: 'Como posso te ajudar?',
+      pinnedBots: 'Bots Fixados',
       starredBots: 'Bots Favoritos',
       recentlyUsedBots: 'Bots Usados Recentemente',
       conversationHistory: 'Conversas Recentes',
@@ -905,16 +906,19 @@ Como você categorizaria este e-mail?`,
         },
       },
       advancedConfigration: {
-        existKnowledgeBaseId: {
+        existingKnowledgeBaseId: {
           label: 'ID para a Base de Conhecimento Amazon Bedrock',
           description:
             'Por favor, especifique o ID da sua base de conhecimento Amazon Bedrock existente.',
-          createNewKb: {
-            label: 'Criar Nova Base de Conhecimento',
-          },
-          existing: {
-            label: 'Use sua base de conhecimento existente',
-          },
+        },
+        createDedicatedKnowledgeBase: {
+          label: 'Criar nova Base de Conhecimento dedicada',
+        },
+        createTenantInSharedKnowledgeBase: {
+          label: 'Crie um inquilino em uma Base de Conhecimento compartilhada',
+        },
+        useExistingKnowledgeBase: {
+          label: 'Use sua Base de Conhecimento existente',
         },
       },
     },
@@ -1022,11 +1026,11 @@ Como você categorizaria este e-mail?`,
         hint: 'Use esta política para validar se as respostas do modelo estão fundamentadas na fonte de referência e são relevantes para a consulta do usuário para filtrar alucinações do modelo.',
         groundingThreshold: {
           label: 'Aterramento',
-          hint: 'Valide se as respostas do modelo estão fundamentadas e factualmente corretas com base nas informações fornecidas na fonte de referência, e bloqueie respostas que estão abaixo do limite definido de aterramento. 0: não bloqueia nada, 0.99: bloqueia quase tudo',
+          hint: 'Valide se as respostas do modelo estão fundamentadas e factualmente corretas com base nas informações fornecidas na fonte de referência, e bloqueie respostas que estão abaixo do limite definido de aterramento. 0: não bloqueia nada, 1: bloqueia quase tudo',
         },
         relevanceThreshold: {
           label: 'Relevância',
-          hint: "Valide se as respostas do modelo são relevantes para a consulta do usuário e bloqueie respostas que estão abaixo do limite definido de relevância. 0: não bloqueia nada, 0.99: bloqueia quase tudo",
+          hint: "Valide se as respostas do modelo são relevantes para a consulta do usuário e bloqueie respostas que estão abaixo do limite definido de relevância. 0: não bloqueia nada, 1: bloqueia quase tudo",
         },
       },
     },
