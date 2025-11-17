@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Published WebSocket Chatbot</title>
+    <title>Techfest Published WebSocket Chatbot</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
         #chat-container { border: 1px solid #ccc; height: 400px; overflow-y: auto; padding: 10px; margin-bottom: 10px; }
@@ -17,12 +17,14 @@
     </style>
 </head>
 <body>
-    <h1>Published WebSocket Chatbot</h1>
+    <h1>Techfest Published WebSocket Chatbot</h1>
     
     <div id="chat-container"></div>
-    
-    <input type="text" id="message-input" placeholder="Type your message...">
-    <button id="send-btn">Send</button>
+    <div style="display: flex;">
+            <input type="text" id="message-input" placeholder="Type your message...">
+    <button style="margin-left: 5px;" id="send-btn">Send</button>
+    </div>
+
 
     <script>
         const WS_ENDPOINT = 'wss://xd869slbn0.execute-api.us-east-1.amazonaws.com/prod';
@@ -99,14 +101,14 @@
             
             // Prepare payload
             const payload = JSON.stringify({
-                conversationId: conversationId,
+                conversation_id: conversationId,
                 message: {
                     role: 'user',
-                    content: [{ contentType: 'text', body: message }],
-                    model: 'claude-v3-7-sonnet',
-                    parentMessageId: lastMessageId
+                    content: [{ content_type: 'text', body: message }],
+                    model: 'claude-v3.7-sonnet',
+                    parent_message_id: lastMessageId
                 },
-                enableReasoning: false
+                enable_reasoning: false
             });
 
             // Chunk payload
@@ -133,6 +135,7 @@
 
                 ws.onmessage = (event) => {
                     const data = event.data;
+                    console.log('WebSocket message received:', data);
 
                     if (data === 'Session started.') {
                         chunks.forEach((chunk, index) => {
@@ -162,18 +165,19 @@
 
                     try {
                         const parsed = JSON.parse(data);
+                        console.log('Parsed message:', parsed);
                         
                         if (parsed.status === PostStreamingStatus.STREAMING) {
                             hideLoading();
                             updateAssistantMessage(parsed.completion);
+                        } else if (parsed.status === PostStreamingStatus.STREAMING_END) {
+                            hideLoading();
+                            console.log('Streaming completed');
                         } else if (parsed.status === PostStreamingStatus.CONVERSATION_METADATA) {
                             // Update conversation tracking
                             if (parsed.conversation_id) conversationId = parsed.conversation_id;
                             if (parsed.message_id) lastMessageId = parsed.message_id;
                             console.log('Conversation metadata received:', {conversationId, lastMessageId});
-                        } else if (parsed.status === PostStreamingStatus.STREAMING_END) {
-                            hideLoading();
-                            console.log('Streaming completed');
                             ws.close();
                         } else if (parsed.status === PostStreamingStatus.ERROR) {
                             hideLoading();

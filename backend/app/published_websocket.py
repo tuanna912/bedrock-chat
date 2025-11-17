@@ -227,9 +227,9 @@ def handler(event, context):
 
             # Process chat
             message_data = json.loads(full_message)
-            if message_data.get("conversationId") is None:
+            if message_data.get("conversation_id") is None:
                 from ulid import ULID
-                message_data["conversationId"] = str(ULID())
+                message_data["conversation_id"] = str(ULID())
             
             chat_input = ChatInput(**message_data)
             chat_input.bot_id = BOT_ID
@@ -248,7 +248,8 @@ def handler(event, context):
                     ),
                     on_reasoning=lambda token: notificator.on_reasoning(token=token),
                 )
-                # Send conversation metadata
+                # Send conversation metadata before finishing
+                import time
                 notificator.notify(
                     payload=json.dumps(
                         dict(
@@ -258,6 +259,7 @@ def handler(event, context):
                         )
                     ).encode("utf-8")
                 )
+                time.sleep(0.5)  # Give time for the message to be sent
                 return {"statusCode": 200, "body": "Message sent."}
             except RecordNotFoundError:
                 return {
@@ -307,5 +309,7 @@ def handler(event, context):
             "body": json.dumps({"status": "ERROR", "reason": str(e)}),
         }
     finally:
+        import time
+        time.sleep(0.2)  # Ensure all messages are sent
         notificator.finish()
         notification_thread.join(timeout=60)
