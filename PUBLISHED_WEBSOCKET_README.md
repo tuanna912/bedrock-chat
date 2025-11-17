@@ -2,6 +2,13 @@
 
 Deploy chatbot WebSocket API công khai với API Key authentication (không cần Cognito login).
 
+## ⚠️ Yêu cầu
+
+**Phải deploy BedrockChatStack trước:**
+```bash
+./bin.sh
+```
+
 ## 🚀 Deploy nhanh trên CloudShell
 
 ```bash
@@ -10,9 +17,17 @@ git clone https://github.com/tuanna912/bedrock-chat.git
 cd bedrock-chat
 git checkout feature/no-authen-chatbot
 
-# Deploy (1 lệnh duy nhất)
+# Deploy qua CodeBuild (tránh lỗi storage)
 chmod +x deploy-published-websocket.sh
 ./deploy-published-websocket.sh ask-bot tvZvFpHxVb5WqLUOPfEOd63rWNRanRgF612GwafS us-east-1
+```
+
+## 💻 Deploy local (nếu có đủ storage)
+
+```bash
+# Trong thư mục bedrock-chat
+chmod +x test-published-websocket-local.sh
+./test-published-websocket-local.sh ask-bot tvZvFpHxVb5WqLUOPfEOd63rWNRanRgF612GwafS us-east-1
 ```
 
 **Kết quả:**

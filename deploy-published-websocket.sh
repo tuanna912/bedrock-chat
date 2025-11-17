@@ -19,6 +19,17 @@ echo "   Repo: $REPO_URL"
 echo "   Version: $VERSION"
 echo ""
 
+# Validate BedrockChatStack exists
+echo "🔍 Checking BedrockChatStack..."
+if ! aws cloudformation describe-stacks --stack-name BedrockChatStack --region $REGION >/dev/null 2>&1; then
+    echo "❌ ERROR: BedrockChatStack not found!"
+    echo "   Please deploy the main Bedrock Chat stack first using:"
+    echo "   ./bin.sh"
+    exit 1
+fi
+echo "   ✓ BedrockChatStack found"
+echo ""
+
 # Step 1: Create SSM Parameter
 echo "✅ Step 1: Creating SSM Parameter..."
 aws ssm put-parameter \
@@ -121,6 +132,22 @@ Resources:
                 - npm ci
                 - echo "Bootstrapping CDK..."
                 - npx cdk bootstrap
+                - echo "Getting BedrockChatStack outputs..."
+                - |
+                  CONVERSATION_TABLE=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `ConversationTable`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
+                  BOT_TABLE=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `BotTable`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
+                  TABLE_ACCESS_ROLE=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `TableAccessRole`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
+                  LARGE_MESSAGE_BUCKET=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `LargeMessageBucket`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
+                  
+                  echo "Conversation Table: $CONVERSATION_TABLE"
+                  echo "Bot Table: $BOT_TABLE"
+                  echo "Table Access Role: $TABLE_ACCESS_ROLE"
+                  echo "Large Message Bucket: $LARGE_MESSAGE_BUCKET"
+                  
+                  if [ -z "$CONVERSATION_TABLE" ] || [ -z "$BOT_TABLE" ] || [ -z "$TABLE_ACCESS_ROLE" ] || [ -z "$LARGE_MESSAGE_BUCKET" ]; then
+                    echo "ERROR: BedrockChatStack not found or missing outputs. Please deploy main stack first."
+                    exit 1
+                  fi
                 - echo "Deploying Published WebSocket Stack..."
                 - |
                   cat > bin/deploy-published-ws.ts <<'EOTS'
@@ -133,28 +160,23 @@ Resources:
                   const botId = process.env.BOT_ID || "ask-bot";
                   const apiKey = process.env.API_KEY || "";
                   
-                  // Get existing stack outputs
-                  const conversationTableName = process.env.CONVERSATION_TABLE_NAME || "BedrockChatStack-DatabaseConversationTable";
-                  const botTableName = process.env.BOT_TABLE_NAME || "BedrockChatStack-DatabaseBotTable";
-                  const tableAccessRoleArn = process.env.TABLE_ACCESS_ROLE_ARN || "";
-                  const largeMessageBucketName = process.env.LARGE_MESSAGE_BUCKET || "";
-                  
                   new PublishedWebSocketStack(app, \`PublishedWS-\${botId}\`, {
                     env: {
                       account: process.env.CDK_DEFAULT_ACCOUNT,
                       region: process.env.CDK_DEFAULT_REGION,
                     },
                     bedrockRegion: "us-east-1",
-                    conversationTableName,
-                    botTableName,
-                    tableAccessRoleArn,
-                    largeMessageBucketName,
+                    conversationTableName: process.env.CONVERSATION_TABLE || "",
+                    botTableName: process.env.BOT_TABLE || "",
+                    tableAccessRoleArn: process.env.TABLE_ACCESS_ROLE || "",
+                    largeMessageBucketName: process.env.LARGE_MESSAGE_BUCKET || "",
                     enableBedrockCrossRegionInference: true,
                     enableLambdaSnapStart: false,
                     botId,
                     apiKey,
                   });
                   EOTS
+                - export CONVERSATION_TABLE BOT_TABLE TABLE_ACCESS_ROLE LARGE_MESSAGE_BUCKET
                 - npx cdk deploy --app "npx ts-node bin/deploy-published-ws.ts" --require-approval never
         Type: NO_SOURCE
 
