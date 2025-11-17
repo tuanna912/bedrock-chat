@@ -1,15 +1,26 @@
 # Deploy Published WebSocket trên CloudShell
 
-## Bước 1: Upload code lên CloudShell
+## ⚡ Cách 1: Deploy qua CodeBuild (Khuyến nghị - Tránh lỗi storage)
 
 ```bash
 # Trên CloudShell, clone repo
 git clone https://github.com/tuanna912/bedrock-chat.git
 cd bedrock-chat
 git checkout feature/no-authen-chatbot
+
+# Deploy với script tự động
+chmod +x deploy-published-websocket.sh
+./deploy-published-websocket.sh ask-bot tvZvFpHxVb5WqLUOPfEOd63rWNRanRgF612GwafS us-east-1
 ```
 
-## Bước 2: Tạo SSM Parameter (nếu chưa có)
+**Parameters:**
+- `ask-bot`: Bot ID
+- `tvZvFpHxVb5WqLUOPfEOd63rWNRanRgF612GwafS`: API Key
+- `us-east-1`: AWS Region
+
+## 🔧 Cách 2: Deploy thủ công (Nếu có đủ storage)
+
+### Bước 1: Tạo SSM Parameter
 
 ```bash
 aws ssm put-parameter \
@@ -20,7 +31,7 @@ aws ssm put-parameter \
   --region us-east-1
 ```
 
-## Bước 3: Deploy CDK Stack
+### Bước 2: Deploy CDK Stack
 
 ```bash
 cd cdk
@@ -33,9 +44,6 @@ npx cdk bootstrap
 
 # Deploy test stack
 npx cdk deploy --app "npx ts-node bin/test-published-websocket.ts" --require-approval never
-
-# Hoặc deploy với stack name tùy chỉnh
-npx cdk deploy TestPublishedWS --app "npx ts-node bin/test-published-websocket.ts"
 ```
 
 ## Bước 4: Lấy WebSocket Endpoint
