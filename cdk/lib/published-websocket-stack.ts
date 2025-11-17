@@ -31,13 +31,12 @@ export class PublishedWebSocketStack extends Stack {
   constructor(scope: Construct, id: string, props: PublishedWebSocketStackProps) {
     super(scope, id, props);
 
-    // Store API key in SSM Parameter Store
-    const apiKeyParameter = new ssm.StringParameter(this, "ApiKeyParameter", {
-      parameterName: `/bedrock-chat/published-bot/${props.botId}/api-key`,
-      stringValue: props.apiKey,
-      description: `API key for published bot ${props.botId}`,
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    // Reference existing SSM Parameter (created by deploy script)
+    const apiKeyParameter = ssm.StringParameter.fromStringParameterName(
+      this,
+      "ApiKeyParameter",
+      `/bedrock-chat/published-bot/${props.botId}/api-key`
+    );
 
     // Session table for WebSocket connections
     const sessionTable = new dynamodb.Table(this, "SessionTable", {
