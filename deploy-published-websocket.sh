@@ -139,10 +139,10 @@ Resources:
                 - echo "Bootstrapping CDK..."
                 - npx cdk bootstrap
                 - echo "Getting BedrockChatStack outputs..."
-                - export CONVERSATION_TABLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`ConversationTableNameV3`].OutputValue' --output text)
-                - export BOT_TABLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`BotTableNameV3`].OutputValue' --output text)
-                - export TABLE_ACCESS_ROLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`TableAccessRoleArn`].OutputValue' --output text)
-                - export LARGE_MESSAGE_BUCKET=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`LargeMessageBucketName`].OutputValue' --output text)
+                - export CONVERSATION_TABLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==\`ConversationTableNameV3\`].OutputValue' --output text)
+                - export BOT_TABLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==\`BotTableNameV3\`].OutputValue' --output text)
+                - export TABLE_ACCESS_ROLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==\`TableAccessRoleArn\`].OutputValue' --output text)
+                - export LARGE_MESSAGE_BUCKET=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==\`LargeMessageBucketName\`].OutputValue' --output text)
                 - echo "Conversation Table - \$CONVERSATION_TABLE"
                 - echo "Bot Table - \$BOT_TABLE"
                 - echo "Table Access Role - \$TABLE_ACCESS_ROLE"
