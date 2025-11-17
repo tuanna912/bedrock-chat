@@ -119,6 +119,12 @@ Resources:
       Source:
         BuildSpec: |
           version: 0.2
+          env:
+            exported-variables:
+              - CONVERSATION_TABLE
+              - BOT_TABLE
+              - TABLE_ACCESS_ROLE
+              - LARGE_MESSAGE_BUCKET
           phases:
             install:
               runtime-versions:
@@ -133,18 +139,18 @@ Resources:
                 - echo "Bootstrapping CDK..."
                 - npx cdk bootstrap
                 - echo "Getting BedrockChatStack outputs..."
-                - export CONVERSATION_TABLE=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `ConversationTable`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
-                - export BOT_TABLE=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `BotTable`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
-                - export TABLE_ACCESS_ROLE=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `TableAccessRole`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
-                - export LARGE_MESSAGE_BUCKET=$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?contains(OutputKey, `LargeMessageBucket`)].OutputValue | [0]' --output text 2>/dev/null || echo "")
-                - echo "Conversation Table - $CONVERSATION_TABLE"
-                - echo "Bot Table - $BOT_TABLE"
-                - echo "Table Access Role - $TABLE_ACCESS_ROLE"
-                - echo "Large Message Bucket - $LARGE_MESSAGE_BUCKET"
-                - test -n "$CONVERSATION_TABLE" || (echo "ERROR - Missing CONVERSATION_TABLE" && exit 1)
-                - test -n "$BOT_TABLE" || (echo "ERROR - Missing BOT_TABLE" && exit 1)
-                - test -n "$TABLE_ACCESS_ROLE" || (echo "ERROR - Missing TABLE_ACCESS_ROLE" && exit 1)
-                - test -n "$LARGE_MESSAGE_BUCKET" || (echo "ERROR - Missing LARGE_MESSAGE_BUCKET" && exit 1)
+                - export CONVERSATION_TABLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`ConversationTableNameV3`].OutputValue' --output text)
+                - export BOT_TABLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`BotTableNameV3`].OutputValue' --output text)
+                - export TABLE_ACCESS_ROLE=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`TableAccessRoleArn`].OutputValue' --output text)
+                - export LARGE_MESSAGE_BUCKET=\$(aws cloudformation describe-stacks --stack-name BedrockChatStack --query 'Stacks[0].Outputs[?OutputKey==`LargeMessageBucketName`].OutputValue' --output text)
+                - echo "Conversation Table - \$CONVERSATION_TABLE"
+                - echo "Bot Table - \$BOT_TABLE"
+                - echo "Table Access Role - \$TABLE_ACCESS_ROLE"
+                - echo "Large Message Bucket - \$LARGE_MESSAGE_BUCKET"
+                - test -n "\$CONVERSATION_TABLE" || (echo "ERROR - Missing CONVERSATION_TABLE" && exit 1)
+                - test -n "\$BOT_TABLE" || (echo "ERROR - Missing BOT_TABLE" && exit 1)
+                - test -n "\$TABLE_ACCESS_ROLE" || (echo "ERROR - Missing TABLE_ACCESS_ROLE" && exit 1)
+                - test -n "\$LARGE_MESSAGE_BUCKET" || (echo "ERROR - Missing LARGE_MESSAGE_BUCKET" && exit 1)
                 - echo "Deploying Published WebSocket Stack..."
                 - |
                   cat > bin/deploy-published-ws.ts <<'EOTS'
