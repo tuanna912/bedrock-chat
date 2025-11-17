@@ -226,7 +226,12 @@ def handler(event, context):
             full_message = "".join(item["MessagePart"] for item in message_parts)
 
             # Process chat
-            chat_input = ChatInput(**json.loads(full_message))
+            message_data = json.loads(full_message)
+            if message_data.get("conversationId") is None:
+                from ulid import ULID
+                message_data["conversationId"] = str(ULID())
+            
+            chat_input = ChatInput(**message_data)
             chat_input.bot_id = BOT_ID
 
             try:
