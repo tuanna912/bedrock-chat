@@ -227,12 +227,42 @@ def handler(event, context):
 
             # Process chat
             message_data = json.loads(full_message)
+            
+            # Convert camelCase to snake_case for backend compatibility
+            if "conversationId" in message_data:
+                message_data["conversation_id"] = message_data.pop("conversationId")
+            if "botId" in message_data:
+                message_data["bot_id"] = message_data.pop("botId")
+            if "enableReasoning" in message_data:
+                message_data["enable_reasoning"] = message_data.pop("enableReasoning")
+            
+            # Convert message fields
+            if "message" in message_data:
+                msg = message_data["message"]
+                if "parentMessageId" in msg:
+                    msg["parent_message_id"] = msg.pop("parentMessageId")
+                if "messageId" in msg:
+                    msg["message_id"] = msg.pop("messageId")
+                if "usedChunks" in msg:
+                    msg.pop("usedChunks")  # Remove unused fields
+                if "thinkingLog" in msg:
+                    msg.pop("thinkingLog")
+                if "feedback" in msg:
+                    msg.pop("feedback")
+                
+                # Convert content fields
+                if "content" in msg:
+                    for content in msg["content"]:
+                        if "contentType" in content:
+                            content["content_type"] = content.pop("contentType")
+            
             if message_data.get("conversation_id") is None:
                 from ulid import ULID
                 message_data["conversation_id"] = str(ULID())
             
             chat_input = ChatInput(**message_data)
-            chat_input.bot_id = BOT_ID
+            if "bot_id" not in message_data:
+                chat_input.bot_id = BOT_ID
 
             try:
                 conversation, message = chat(
