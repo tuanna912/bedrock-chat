@@ -210,7 +210,12 @@ def handler(event, context):
                 }
 
             # Create user with bot_id
-            user = User(id=f"published#{BOT_ID}", groups=[])
+            user = User(
+                id=f"published#{BOT_ID}",
+                name="Published User",
+                email="published@bot.local",
+                groups=[]
+            )
 
             # Retrieve and concatenate message parts
             response = table.query(
