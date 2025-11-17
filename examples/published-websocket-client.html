@@ -12,15 +12,12 @@
         .message { margin: 10px 0; padding: 10px; border-radius: 5px; }
         .user { background: #e3f2fd; text-align: right; }
         .assistant { background: #f5f5f5; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <h1>Published WebSocket Chatbot</h1>
-    
-    <div>
-        <input type="text" id="ws-endpoint" placeholder="wss://your-websocket-endpoint" style="width: 60%; padding: 5px;">
-        <input type="text" id="api-key" placeholder="Your API Key" style="width: 35%; padding: 5px;">
-    </div>
     
     <div id="chat-container"></div>
     
@@ -28,6 +25,8 @@
     <button id="send-btn">Send</button>
 
     <script>
+        const WS_ENDPOINT = 'wss://xd869slbn0.execute-api.us-east-1.amazonaws.com/prod';
+        const API_KEY = 'pNvbYgtJY64anPrVmceBR1RABmJuAI0y4nbTEoFi';
         const CHUNK_SIZE = 32 * 1024;
         const PostStreamingStatus = {
             START: 'START',
@@ -35,10 +34,31 @@
             END: 'END',
             STREAMING: 'STREAMING',
             STREAMING_END: 'STREAMING_END',
+            CONVERSATION_METADATA: 'CONVERSATION_METADATA',
             ERROR: 'ERROR'
         };
 
         let currentAssistantMessage = null;
+        let loadingElement = null;
+        let conversationId = null;
+        let lastMessageId = null;
+
+        function showLoading() {
+            const chatContainer = document.getElementById('chat-container');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message assistant';
+            loadingDiv.innerHTML = '<span class="loading"></span>';
+            chatContainer.appendChild(loadingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            loadingElement = loadingDiv;
+        }
+
+        function hideLoading() {
+            if (loadingElement) {
+                loadingElement.remove();
+                loadingElement = null;
+            }
+        }
 
         function addMessage(role, content) {
             const chatContainer = document.getElementById('chat-container');
@@ -60,13 +80,11 @@
         }
 
         async function sendMessage() {
-            const wsEndpoint = document.getElementById('ws-endpoint').value;
-            const apiKey = document.getElementById('api-key').value;
             const messageInput = document.getElementById('message-input');
             const message = messageInput.value.trim();
 
-            if (!wsEndpoint || !apiKey || !message) {
-                alert('Please fill in all fields');
+            if (!message) {
+                alert('Please enter a message');
                 return;
             }
 
@@ -74,15 +92,19 @@
             addMessage('user', message);
             messageInput.value = '';
             currentAssistantMessage = null;
+            showLoading();
 
+            // Generate message ID
+            const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            
             // Prepare payload
             const payload = JSON.stringify({
-                conversationId: null,
+                conversationId: conversationId,
                 message: {
                     role: 'user',
                     content: [{ contentType: 'text', body: message }],
-                    model: 'claude-v3.7-sonnet',
-                    parentMessageId: null
+                    model: 'claude-v3-7-sonnet',
+                    parentMessageId: lastMessageId
                 },
                 enableReasoning: false
             });
@@ -99,13 +121,13 @@
             let receivedCount = 0;
 
             return new Promise((resolve, reject) => {
-                const ws = new WebSocket(wsEndpoint);
+                const ws = new WebSocket(WS_ENDPOINT);
 
                 ws.onopen = () => {
                     console.log('WebSocket connected');
                     ws.send(JSON.stringify({
                         step: PostStreamingStatus.START,
-                        apiKey: apiKey
+                        apiKey: API_KEY
                     }));
                 };
 
@@ -128,7 +150,7 @@
                         if (receivedCount === chunks.length) {
                             ws.send(JSON.stringify({
                                 step: PostStreamingStatus.END,
-                                apiKey: apiKey
+                                apiKey: API_KEY
                             }));
                         }
                         return;
@@ -142,11 +164,19 @@
                         const parsed = JSON.parse(data);
                         
                         if (parsed.status === PostStreamingStatus.STREAMING) {
+                            hideLoading();
                             updateAssistantMessage(parsed.completion);
+                        } else if (parsed.status === PostStreamingStatus.CONVERSATION_METADATA) {
+                            // Update conversation tracking
+                            if (parsed.conversation_id) conversationId = parsed.conversation_id;
+                            if (parsed.message_id) lastMessageId = parsed.message_id;
+                            console.log('Conversation metadata received:', {conversationId, lastMessageId});
                         } else if (parsed.status === PostStreamingStatus.STREAMING_END) {
+                            hideLoading();
                             console.log('Streaming completed');
                             ws.close();
                         } else if (parsed.status === PostStreamingStatus.ERROR) {
+                            hideLoading();
                             console.error('Error:', parsed.reason);
                             addMessage('assistant', `Error: ${parsed.reason}`);
                             ws.close();
@@ -157,11 +187,13 @@
                 };
 
                 ws.onerror = (error) => {
+                    hideLoading();
                     console.error('WebSocket error:', error);
                     reject(error);
                 };
 
                 ws.onclose = () => {
+                    hideLoading();
                     console.log('WebSocket closed');
                     resolve();
                 };

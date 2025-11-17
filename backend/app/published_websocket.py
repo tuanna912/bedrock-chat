@@ -235,7 +235,7 @@ def handler(event, context):
             chat_input.bot_id = BOT_ID
 
             try:
-                chat(
+                conversation, message = chat(
                     user=user,
                     chat_input=chat_input,
                     on_stream=lambda token: notificator.on_stream(token=token),
@@ -247,6 +247,16 @@ def handler(event, context):
                         run_result=run_result
                     ),
                     on_reasoning=lambda token: notificator.on_reasoning(token=token),
+                )
+                # Send conversation metadata
+                notificator.notify(
+                    payload=json.dumps(
+                        dict(
+                            status="CONVERSATION_METADATA",
+                            conversation_id=conversation.id,
+                            message_id=conversation.last_message_id,
+                        )
+                    ).encode("utf-8")
                 )
                 return {"statusCode": 200, "body": "Message sent."}
             except RecordNotFoundError:
