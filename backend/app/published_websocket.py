@@ -162,12 +162,18 @@ def handler(event, context):
         if step == "START":
             # Verify API key
             if not api_key or not verify_api_key(api_key):
-                return {
-                    "statusCode": 403,
-                    "body": json.dumps(
-                        dict(status="ERROR", reason="Invalid API key.")
-                    ),
-                }
+                # Send error via WebSocket
+                gatewayapi = boto3.client(
+                    "apigatewaymanagementapi", endpoint_url=endpoint_url
+                )
+                try:
+                    gatewayapi.post_to_connection(
+                        ConnectionId=connection_id,
+                        Data=json.dumps(dict(status="ERROR", reason="Invalid API key.")).encode("utf-8"),
+                    )
+                except:
+                    pass
+                return {"statusCode": 403}
 
             # Store connection
             table.put_item(
@@ -178,7 +184,20 @@ def handler(event, context):
                     "expire": expire,
                 }
             )
-            return {"statusCode": 200, "body": "Session started."}
+            
+            # Send success response via WebSocket
+            gatewayapi = boto3.client(
+                "apigatewaymanagementapi", endpoint_url=endpoint_url
+            )
+            try:
+                gatewayapi.post_to_connection(
+                    ConnectionId=connection_id,
+                    Data="Session started.".encode("utf-8"),
+                )
+            except Exception as e:
+                logger.error(f"Failed to send response: {e}")
+            
+            return {"statusCode": 200}
 
         elif step == "END":
             # Verify API key again
@@ -247,7 +266,19 @@ def handler(event, context):
                     "expire": expire,
                 }
             )
-            return {"statusCode": 200, "body": "Message part received."}
+            # Send ack via WebSocket
+            gatewayapi = boto3.client(
+                "apigatewaymanagementapi", endpoint_url=endpoint_url
+            )
+            try:
+                gatewayapi.post_to_connection(
+                    ConnectionId=connection_id,
+                    Data="Message part received.".encode("utf-8"),
+                )
+            except Exception as e:
+                logger.error(f"Failed to send ack: {e}")
+            
+            return {"statusCode": 200}
 
     except Exception as e:
         logger.exception(f"Operation failed: {e}")
