@@ -6,11 +6,6 @@ import { PostStreamingStatus } from '../constants';
 
 const CHUNK_SIZE = 32 * 1024; //32KB
 
-interface UsePublishedWebSocketProps {
-  wsEndpoint: string;
-  apiKey: string;
-}
-
 const usePublishedWebSocket = create<{
   post: (params: {
     wsEndpoint: string;
