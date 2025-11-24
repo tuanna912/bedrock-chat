@@ -633,7 +633,7 @@ def chat_output_from_message(
 def propose_conversation_title(
     user_id: str,
     conversation_id: str,
-    model: type_model_name = "claude-v3-haiku",
+    model: type_model_name = "amazon-nova-lite",
 ) -> str:
     PROMPT = """Reading the conversation above, what is the appropriate title for the conversation? When answering the title, please follow the rules below:
 <rules>
