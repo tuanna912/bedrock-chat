@@ -1,6 +1,6 @@
-import React, { ReactNode, useMemo } from 'react';
+import React, { ReactNode, useCallback, useMemo } from 'react';
 import { BaseProps } from '../@types/common';
-import { ReactMarkdown } from 'react-markdown/lib/react-markdown';
+import Markdown, { MarkdownHooks, Options as MarkdownOptions } from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
@@ -9,11 +9,12 @@ import ButtonDownload from './ButtonDownload';
 import ButtonCopy from './ButtonCopy';
 import { RelatedDocument } from '../@types/conversation';
 import { twMerge } from 'tailwind-merge';
-import i18next from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { create } from 'zustand';
 import { produce } from 'immer';
-import rehypeExternalLinks, { Options } from 'rehype-external-links';
+import rehypeExternalLinks, { Options as RehypeExternalLinksOptions } from 'rehype-external-links';
 import rehypeKatex from 'rehype-katex';
+import rehypeMermaid, { RehypeMermaidOptions } from 'rehype-mermaid';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
 import { onlyText } from 'react-children-utilities';
@@ -94,6 +95,7 @@ const ChatMessageMarkdown: React.FC<Props> = ({
   relatedDocuments,
   messageId,
 }) => {
+  const { t } = useTranslation();
   const sourceIds = useMemo(() => (
     [...new Set(Array.from(
       children.matchAll(/\[\^(?<sourceId>[\w!?/+\-_~=;.,*&@#$%]+?)\]/g),
@@ -101,7 +103,7 @@ const ChatMessageMarkdown: React.FC<Props> = ({
     ))]
   ), [children]);
 
-  const chatWaitingSymbol = useMemo(() => i18next.t('app.chatWaitingSymbol'), []);
+  const chatWaitingSymbol = useMemo(() => t('app.chatWaitingSymbol'), [t]);
   const text = useMemo(() => {
     const textRemovedIncompleteCitation = children.replace(/\[\^[^\]]*?$/, '[^');
     let textReplacedSourceId = textRemovedIncompleteCitation.replace(
@@ -138,117 +140,193 @@ const ChatMessageMarkdown: React.FC<Props> = ({
     return textReplacedSourceId;
   }, [children, isStreaming, sourceIds, chatWaitingSymbol]);
 
-  const remarkPlugins = useMemo(() => {
-    return [remarkGfm, remarkBreaks, remarkMath];
+  type RemarkPlugins = Exclude<MarkdownOptions['remarkPlugins'], null | undefined>
+  const remarkPlugins = useMemo((): RemarkPlugins => [
+    remarkGfm,
+    remarkBreaks,
+    remarkMath,
+  ], []);
+
+  type RehypePlugins = Exclude<MarkdownOptions['rehypePlugins'], null | undefined>
+  const rehypePlugins = useMemo((): RehypePlugins => [
+    rehypeKatex,
+    [
+      rehypeExternalLinks, {
+        target: '_blank',
+        properties: { style: 'word-break: break-word;' },
+      } as const satisfies RehypeExternalLinksOptions,
+    ],
+  ], []);
+
+  const rehypeAsyncPlugins = useMemo((): RehypePlugins => [
+    ...rehypePlugins,
+    [
+      rehypeMermaid, {
+        errorFallback: (_element, diagram, error) => (
+          {
+            type: "element",
+            tagName: "pre",
+            properties: {
+              className: "p-3 space-y-1",
+            },
+            children: [
+              {
+                type: "element",
+                tagName: "div",
+                properties: {
+                  className: "p-2 bg-[#1e1e1e] font-[Menlo, Monaco, Consolas, \"Andale Mono\", \"Ubuntu Mono\", \"Courier New\", monospace] text-[13px] text-[#d4d4d4] leading-[1.3] whitespace-pre-wrap break-all",
+                },
+                children: [
+                  {
+                    type: "text",
+                    value: diagram,
+                  },
+                ],
+              },
+              {
+                type: "element",
+                tagName: 'div',
+                properties: {
+                  className: "text-sm font-bold text-red",
+                },
+                children: [
+                  {
+                    type: "text",
+                    value: t("error.invalidMermaidFormat"),
+                  },
+                ],
+              },
+              {
+                type: "element",
+                tagName: "div",
+                properties: {
+                  className: "p-2 border text-sm rounded text-red/80",
+                },
+                children: [
+                  {
+                    type: "text",
+                    value: `${error}`,
+                  },
+                ],
+              },
+            ],
+          }
+        ),
+      } as const satisfies RehypeMermaidOptions,
+    ],
+  ], [rehypePlugins, t]);
+
+  type Components = Exclude<MarkdownOptions['components'], null | undefined>
+  type CodeComponent = Exclude<Components['code'], keyof JSX.IntrinsicElements | undefined>;
+  const Code = useCallback<CodeComponent>(function ({ node: _node, className, children, ref: _ref, ...props }) {
+    const match = /language-(\w+)/.exec(className || '');
+    const codeText = onlyText(children).replace(/\n$/, '');
+
+    return match ? (
+      <CopyToClipboard codeText={codeText}>
+        <SyntaxHighlighter
+          {...props}
+          children={codeText}
+          style={vscDarkPlus}
+          language={match[1]}
+          PreTag="div"
+          wrapLongLines={true}
+          customStyle={{
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            maxWidth: '100%'
+          }}
+          className="code-block-wrap"
+        />
+      </CopyToClipboard>
+    ) : (
+      <code {...props} className={className}>
+        {children}
+      </code>
+    );
   }, []);
-  const rehypePlugins = useMemo(() => {
-    const rehypeExternalLinksOptions: Options = {
-      target: '_blank',
-      properties: { style: 'word-break: break-word;' },
-    };
-    return [rehypeKatex, [rehypeExternalLinks, rehypeExternalLinksOptions]];
+
+  type SupComponent = Exclude<Components['sup'], keyof JSX.IntrinsicElements | undefined>;
+  const Sup = useCallback<SupComponent>(function ({ className, children }) {
+    // Footnote's Link is replaced with a component that displays the Reference document
+    return (
+      <sup className={className}>
+        {
+          React.Children.map(children, (child, idx) => {
+            if (child != null && typeof child === 'object' && 'props' in child && child.props['data-footnote-ref']) {
+              const href: string = child.props.href ?? '';
+              if (/#user-content-fn-[\d]+/.test(href ?? '')) {
+                const docNo = Number.parseInt(
+                  href.replace('#user-content-fn-', '')
+                );
+                const sourceId = sourceIds[docNo - 1];
+                const relatedDocument = relatedDocuments?.find(document => (
+                  document.sourceId === sourceId || document.sourceId === `${messageId}@${sourceId}`
+                ));
+
+                const refNo = child.props.children[0];
+                return (
+                  <RelatedDocumentLink
+                    key={`${idx}-${docNo}`}
+                    linkId={`${messageId}-${idx}-${docNo}`}
+                    relatedDocument={relatedDocument}
+                    sourceId={sourceId}
+                  >
+                    [{refNo}]
+                  </RelatedDocumentLink>
+                );
+              }
+            }
+            return child;
+          })
+        }
+      </sup>
+    );
+  }, [messageId, relatedDocuments, sourceIds]);
+
+  type SectionComponent = Exclude<Components['section'], keyof JSX.IntrinsicElements | undefined>;
+  const Section = useCallback<SectionComponent>(function ({ className, children, ...props }) {
+    // Normal Footnote not shown for RAG reference documents
+    if ('data-footnotes' in props && props['data-footnotes']) {
+      return null;
+    } else {
+      return <section className={className}>{children}</section>;
+    }
   }, []);
+
+  const components = useMemo((): Components => ({
+    code: Code,
+    sup: Sup,
+    section: Section,
+  }), [Code, Sup, Section]);
 
   return (
-    <ReactMarkdown
-      className={twMerge(className, 'prose dark:prose-invert max-w-full break-words')}
-      children={text}
-      remarkPlugins={remarkPlugins}
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      rehypePlugins={rehypePlugins}
-      components={{
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        code({ node, inline, className, children, ...props }) {
-          const match = /language-(\w+)/.exec(className || '');
-          const codeText = onlyText(children).replace(/\n$/, '');
-
-          return !inline && match ? (
-            <CopyToClipboard codeText={codeText}>
-              <SyntaxHighlighter
-                {...props}
-                children={codeText}
-                style={vscDarkPlus}
-                language={match[1]}
-                PreTag="div"
-                wrapLongLines={true}
-                customStyle={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'break-word',
-                  maxWidth: '100%'
-                }}
-                className="code-block-wrap"
-              />
-            </CopyToClipboard>
-          ) : (
-            <code {...props} className={className}>
-              {children}
-            </code>
-          );
-        },
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        sup({ className, children }) {
-          // Footnote's Link is replaced with a component that displays the Reference document
-          return (
-            <sup className={className}>
-              {
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                children.map((child, idx) => {
-                  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                  // @ts-ignore
-                  if (child?.props['data-footnote-ref']) {
-                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                    // @ts-ignore
-                    const href: string = child.props.href ?? '';
-                    if (/#user-content-fn-[\d]+/.test(href ?? '')) {
-                      const docNo = Number.parseInt(
-                        href.replace('#user-content-fn-', '')
-                      );
-                      const sourceId = sourceIds[docNo - 1];
-                      const relatedDocument = relatedDocuments?.find(document => (
-                        document.sourceId === sourceId || document.sourceId === `${messageId}@${sourceId}`
-                      ));
-
-                      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                      // @ts-ignore
-                      const refNo = child.props.children[0];
-                      return (
-                        <RelatedDocumentLink
-                          key={`${idx}-${docNo}`}
-                          linkId={`${messageId}-${idx}-${docNo}`}
-                          relatedDocument={relatedDocument}
-                          sourceId={sourceId}
-                        >
-                          [{refNo}]
-                        </RelatedDocumentLink>
-                      );
-                    }
-                  }
-                  return child;
-                })
-              }
-            </sup>
-          );
-        },
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        section({ className, children, ...props }) {
-          // Normal Footnote not shown for RAG reference documents
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          if (props['data-footnotes']) {
-            return null;
-          } else {
-            return <section className={className}>{children}</section>;
+    <div className={twMerge(className, 'prose dark:prose-invert w-full break-words')}>
+      {isStreaming ? (
+        <Markdown
+          children={text}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={components}
+        />
+      ) : (
+        <MarkdownHooks
+          children={text}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypeAsyncPlugins}
+          components={components}
+          fallback={
+            <Markdown
+              children={text}
+              remarkPlugins={remarkPlugins}
+              rehypePlugins={rehypePlugins}
+              components={components}
+            />
           }
-        },
-      }}
-    />
+        />
+      )}
+    </div>
   );
 };
 

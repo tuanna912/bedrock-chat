@@ -94,6 +94,7 @@ const chat = new BedrockChatStack(
     selfSignUpEnabled: params.selfSignUpEnabled,
     documentBucket: bedrockRegionResources.documentBucket,
     enableRagReplicas: params.enableRagReplicas,
+    enableBedrockGlobalInference: params.enableBedrockGlobalInference,
     enableBedrockCrossRegionInference: params.enableBedrockCrossRegionInference,
     enableLambdaSnapStart: params.enableLambdaSnapStart,
     alternateDomainName: params.alternateDomainName,
@@ -102,9 +103,12 @@ const chat = new BedrockChatStack(
     enableBotStoreReplicas: params.enableBotStoreReplicas,
     botStoreLanguage: params.botStoreLanguage,
     globalAvailableModels: params.globalAvailableModels,
+    defaultModel: params.defaultModel,
+    titleModel: params.titleModel,
     tokenValidMinutes: params.tokenValidMinutes,
     devAccessIamRoleArn: params.devAccessIamRoleArn,
     allowedCountries: params.allowedCountries,
+    logoPath: params.logoPath,
   }
 );
 if (waf) {

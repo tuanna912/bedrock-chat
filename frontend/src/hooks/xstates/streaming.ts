@@ -58,10 +58,6 @@ export const streamingStateMachine = createMachine<StreamingContext, StreamingEv
     tools: [],
     relatedDocuments: [],
   },
-  schema: {
-    context: {} as StreamingContext,
-    events: {} as StreamingEvent,
-  },
   initial: 'sleeping',
   states: {
     sleeping: {
@@ -96,61 +92,69 @@ export const streamingStateMachine = createMachine<StreamingContext, StreamingEv
           }),
         },
         'tool-use': {
-          actions: assign((context, event) => produce(context, draft => {
-            if (event.type === 'tool-use') {
-              const reasoning = draft.reasoning ? draft.reasoning : undefined;
-              draft.reasoning = '';
-              const text = draft.text ? draft.text : undefined;
-              draft.text = '';
-              if (draft.tools.length > 0 && text == null && reasoning == null) {
-                draft.tools[draft.tools.length - 1].tools[event.toolUseId] = {
-                  name: event.name,
-                  input: event.input,
-                  status: 'running',
-                };
-              } else {
-                draft.tools.push({
-                  reasoning: reasoning,
-                  thought: text,
-                  tools: {
-                    [event.toolUseId]: {
-                      name: event.name,
-                      input: event.input,
-                      status: 'running',
+          actions: assign((context, event) => {
+            return produce(context, (draft: StreamingContext) => {
+              if (event.type === 'tool-use') {
+                const reasoning = draft.reasoning ? draft.reasoning : undefined;
+                draft.reasoning = '';
+
+                const text = draft.text ? draft.text : undefined;
+                draft.text = '';
+
+                if (draft.tools.length > 0 && text == null && reasoning == null) {
+                  draft.tools[draft.tools.length - 1].tools[event.toolUseId] = {
+                    name: event.name,
+                    input: event.input,
+                    status: 'running',
+                  };
+                } else {
+                  draft.tools.push({
+                    reasoning: reasoning,
+                    thought: text,
+                    tools: {
+                      [event.toolUseId]: {
+                        name: event.name,
+                        input: event.input,
+                        status: 'running',
+                      },
                     },
-                  },
-                });
+                  });
+                }
               }
-            }
-          })),
+            });
+          }),
         },
         'tool-result': {
           actions: assign({
-            tools: (context, event) => produce(context.tools, draft => {
-              if (event.type === 'tool-result') {
-                const tool = draft.find(tool => event.toolUseId in tool.tools);
-                if (tool != null) {
-                  tool.tools[event.toolUseId].status = event.status;
+            tools: (context, event) => {
+              return produce(context.tools, (draft: AgentToolsProps[]) => {
+                if (event.type === 'tool-result') {
+                  const tool = draft.find(tool => event.toolUseId in tool.tools);
+                  if (tool != null) {
+                    tool.tools[event.toolUseId].status = event.status;
+                  }
                 }
-              }
-            }),
+              });
+            },
           }),
         },
         'related-document': {
-          actions: assign((context, event) => produce(context, draft => {
-            if (event.type === 'related-document') {
-              const tool = draft.tools.find(tool => event.toolUseId in tool.tools);
-              if (tool != null) {
-                const toolUse = tool.tools[event.toolUseId];
-                if (toolUse.relatedDocuments == null) {
-                  toolUse.relatedDocuments = [event.relatedDocument];
-                } else {
-                  toolUse.relatedDocuments.push(event.relatedDocument);
+          actions: assign((context, event) => {
+            return produce(context, (draft: StreamingContext) => {
+              if (event.type === 'related-document') {
+                const tool = draft.tools.find(tool => event.toolUseId in tool.tools);
+                if (tool != null) {
+                  const toolUse = tool.tools[event.toolUseId];
+                  if (toolUse.relatedDocuments == null) {
+                    toolUse.relatedDocuments = [event.relatedDocument];
+                  } else {
+                    toolUse.relatedDocuments.push(event.relatedDocument);
+                  }
                 }
+                draft.relatedDocuments.push(event.relatedDocument);
               }
-              draft.relatedDocuments.push(event.relatedDocument);
-            }
-          })),
+            });
+          }),
         },
         reset: {
           actions: assign({
@@ -161,12 +165,6 @@ export const streamingStateMachine = createMachine<StreamingContext, StreamingEv
           }),
         },
         goodbye: {
-          actions: assign({
-            reasoning: '',
-            text: '',
-            tools: [],
-            relatedDocuments: [],
-          }),
           target: 'leaving',
         },
       },

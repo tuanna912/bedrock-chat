@@ -2,10 +2,8 @@ import logging
 import os
 from typing import Literal, TypeGuard
 
-from app.agents.tools.agent_tool import AgentTool
-from app.agents.utils import get_available_tools
+from app.agents.tools.agent_tool import AgentTool as LegacyAgentTool
 from app.config import DEFAULT_GENERATION_CONFIG
-from app.config import GenerationParams as GenerationParamsDict
 from app.repositories.common import RecordNotFoundError
 from app.repositories.custom_bot import (
     alias_exists,
@@ -31,7 +29,6 @@ from app.repositories.custom_bot import (
     update_bot_stats,
 )
 from app.repositories.models.custom_bot import (
-    ActiveModelsModel,
     AgentModel,
     BotAliasModel,
     BotModel,
@@ -45,7 +42,6 @@ from app.repositories.models.custom_bot_kb import BedrockKnowledgeBaseModel
 from app.routes.schemas.admin import (
     PushBotInput,
     PushBotInputPinned,
-    PushBotInputUnpinned,
 )
 from app.routes.schemas.bot import (
     ActiveModelsOutput,
@@ -72,6 +68,7 @@ from app.routes.schemas.bot import (
 )
 from app.routes.schemas.bot_guardrails import BedrockGuardrailsOutput
 from app.routes.schemas.bot_kb import BedrockKnowledgeBaseOutput
+from app.strands_integration.utils import get_strands_registered_tools
 from app.user import User
 from app.utils import (
     compose_upload_document_s3_path,
@@ -80,9 +77,8 @@ from app.utils import (
     delete_file_from_s3,
     delete_files_with_prefix_from_s3,
     generate_presigned_url,
-    get_current_time,
     move_file_in_s3,
-    store_api_key_to_secret_manager,
+    start_embedding_state_machine,
 )
 
 logger = logging.getLogger(__name__)
@@ -145,6 +141,20 @@ def create_new_bot(user: User, bot_input: BotInput) -> BotOutput:
     new_bot = BotModel.from_input(bot_input, owner_user_id=user.id, knowledge=knowledge)
     store_bot(new_bot)
 
+    if new_bot.sync_status == "QUEUED":
+        # If necessary, start the Embedding state machine.
+        start_embedding_state_machine(
+            user_id=user.id,
+            bot_id=new_bot.id,
+            added_filenames=filenames,
+            unchanged_filenames=[],
+            deleted_filenames=[],
+            sync_shared_knowledge_bases_required=(
+                new_bot.bedrock_knowledge_base is not None
+                and new_bot.bedrock_knowledge_base.type == "shared"
+            ),
+        )
+
     return new_bot.to_output()
 
 
@@ -163,29 +173,31 @@ def modify_owned_bot(
     sitemap_urls = []
     filenames = []
     s3_urls = []
-    sync_status: type_sync_status = "QUEUED"
+    added_filenames = []
+    unchanged_filenames = []
+    deleted_filenames = []
 
     if modify_input.knowledge:
         source_urls = modify_input.knowledge.source_urls
         sitemap_urls = modify_input.knowledge.sitemap_urls
         s3_urls = modify_input.knowledge.s3_urls
+        added_filenames = modify_input.knowledge.added_filenames
+        unchanged_filenames = modify_input.knowledge.unchanged_filenames
+        deleted_filenames = modify_input.knowledge.deleted_filenames
 
         # Commit changes to S3
         _update_s3_documents_by_diff(
             user.id,
             bot_id,
-            modify_input.knowledge.added_filenames,
-            modify_input.knowledge.deleted_filenames,
+            added_filenames,
+            deleted_filenames,
         )
         # Delete files from upload temp directory
         delete_files_with_prefix_from_s3(
             DOCUMENT_BUCKET, compose_upload_temp_s3_prefix(bot.owner_user_id, bot_id)
         )
 
-        filenames = (
-            modify_input.knowledge.added_filenames
-            + modify_input.knowledge.unchanged_filenames
-        )
+        filenames = added_filenames + unchanged_filenames
 
     generation_params = (
         GenerationParamsModel(
@@ -205,7 +217,7 @@ def modify_owned_bot(
     # if knowledge is not updated, skip embeding process.
     # 'sync_status = "QUEUED"' will execute embeding process and update dynamodb record.
     # 'sync_status= "SUCCEEDED"' will update only dynamodb record.
-    sync_status = (
+    sync_status: type_sync_status = (
         "QUEUED"
         if modify_input.is_embedding_required(bot)
         or modify_input.is_guardrails_update_required(bot)
@@ -271,6 +283,19 @@ def modify_owned_bot(
             modify_input.active_models.model_dump()  # type: ignore
         ),
     )
+
+    if sync_status == "QUEUED":
+        # If necessary, start the Embedding state machine.
+        start_embedding_state_machine(
+            user_id=user.id,
+            bot_id=bot.id,
+            added_filenames=added_filenames,
+            unchanged_filenames=unchanged_filenames,
+            deleted_filenames=deleted_filenames,
+            sync_shared_knowledge_bases_required=(
+                modify_input.is_sync_shared_knowledge_bases_required(bot)
+            ),
+        )
 
     return BotModifyOutput(
         id=bot_id,
@@ -645,31 +670,72 @@ def remove_uploaded_file(user: User, bot_id: str, filename: str):
 
 def fetch_available_agent_tools() -> list[Tool]:
     """Fetch available tools for bot."""
-    tools: list[AgentTool] = get_available_tools()
-    result: list[Tool] = []
-    for tool in tools:
-        if tool.name == "bedrock_agent":
-            result.append(
-                BedrockAgentTool(
-                    tool_type="bedrock_agent",
-                    name=tool.name,
-                    description=tool.description,
+    use_strands = os.environ.get("USE_STRANDS", "true").lower() == "true"
+
+    if use_strands:
+        # Use Strands integration
+        tools = get_strands_registered_tools()
+        result: list[Tool] = []
+        for tool in tools:
+            # Extract only the first line of description to avoid showing Args/Returns in UI
+            description = tool.tool_spec["description"].split("\n")[0].strip()
+            if tool.tool_name == "bedrock_agent":
+                result.append(
+                    BedrockAgentTool(
+                        tool_type="bedrock_agent",
+                        name=tool.tool_name,
+                        description=description,
+                    )
                 )
-            )
-        elif tool.name == "internet_search":
-            result.append(
-                InternetTool(
-                    tool_type="internet",
-                    name=tool.name,
-                    description=tool.description,
-                    search_engine="duckduckgo",
+            elif tool.tool_name == "internet_search":
+                result.append(
+                    InternetTool(
+                        tool_type="internet",
+                        name=tool.tool_name,
+                        description=description,
+                        search_engine="duckduckgo",
+                    )
                 )
-            )
-        else:
-            result.append(
-                PlainTool(
-                    tool_type="plain", name=tool.name, description=tool.description
+            else:
+                result.append(
+                    PlainTool(
+                        tool_type="plain",
+                        name=tool.tool_name,
+                        description=description,
+                    )
                 )
-            )
+    else:
+        # Use legacy agents.utils
+        from app.agents.utils import get_available_tools
+
+        legacy_tools: list[LegacyAgentTool] = get_available_tools()
+        legacy_result: list[Tool] = []
+        for legacy_tool in legacy_tools:
+            if legacy_tool.name == "bedrock_agent":
+                legacy_result.append(
+                    BedrockAgentTool(
+                        tool_type="bedrock_agent",
+                        name=legacy_tool.name,
+                        description=legacy_tool.description,
+                    )
+                )
+            elif legacy_tool.name == "internet_search":
+                legacy_result.append(
+                    InternetTool(
+                        tool_type="internet",
+                        name=legacy_tool.name,
+                        description=legacy_tool.description,
+                        search_engine="duckduckgo",
+                    )
+                )
+            else:
+                legacy_result.append(
+                    PlainTool(
+                        tool_type="plain",
+                        name=legacy_tool.name,
+                        description=legacy_tool.description,
+                    )
+                )
+        result = legacy_result
 
     return result

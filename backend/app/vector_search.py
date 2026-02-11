@@ -1,25 +1,21 @@
 import logging
-from typing import TypedDict, Any
+from typing import Any, TypedDict
 from urllib.parse import urlparse
 
+from app.repositories.knowledge_base import get_knowledge_base_info
 from app.repositories.models.conversation import (
     RelatedDocumentModel,
     TextToolResultModel,
 )
 from app.repositories.models.custom_bot import BotModel
-from app.repositories.knowledge_base import get_knowledge_base_info
 from app.utils import get_bedrock_agent_runtime_client
 from botocore.exceptions import ClientError
+from mypy_boto3_bedrock_agent_runtime.literals import SearchTypeType
 from mypy_boto3_bedrock_agent_runtime.type_defs import (
     KnowledgeBaseRetrievalResultTypeDef,
     KnowledgeBaseVectorSearchConfigurationTypeDef,
     RetrieveRequestTypeDef,
 )
-from mypy_boto3_bedrock_agent_runtime.literals import (
-    SearchTypeType,
-)
-from mypy_boto3_bedrock_runtime.type_defs import GuardrailConverseContentBlockTypeDef
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -48,22 +44,6 @@ def search_result_to_related_document(
         source_name=search_result["source_name"],
         source_link=search_result["source_link"],
         page_number=search_result["page_number"],
-    )
-
-
-def to_guardrails_grounding_source(
-    search_results: list[SearchResult],
-) -> GuardrailConverseContentBlockTypeDef | None:
-    """Convert search results to Guardrails Grounding source format."""
-    return (
-        {
-            "text": {
-                "text": "\n\n".join(x["content"] for x in search_results),
-                "qualifiers": ["grounding_source"],
-            }
-        }
-        if len(search_results) > 0
-        else None
     )
 
 
@@ -103,6 +83,15 @@ def _bedrock_knowledge_base_search(bot: BotModel, query: str) -> list[SearchResu
                 }
             },
         }
+        if bot.bedrock_knowledge_base.type == "shared":
+            # Specify the Bot ID as a filter condition for the shared Knowledge Base.
+            retrieve_parameter["retrievalConfiguration"]["vectorSearchConfiguration"]["filter"] = {  # type: ignore
+                "listContains": {
+                    "key": "tenants",
+                    # Note: metadata is attached on cdk/lambda/knowledge-base-custom-transformation/index.ts
+                    "value": f"BOT#{bot.id}",  # type: ignore
+                },
+            }
 
         # Omit overrideSearchType parameter if needed
         def omit_override_search_type_parameter(

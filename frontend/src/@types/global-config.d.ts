@@ -2,6 +2,8 @@ import { AVAILABLE_MODEL_KEYS } from '../constants/index';
 
 export interface GlobalConfig {
   globalAvailableModels: string[];
+  defaultModel?: string;
+  logoPath?: string;
 }
 
 export interface GetGlobalConfigResponse extends GlobalConfig {}

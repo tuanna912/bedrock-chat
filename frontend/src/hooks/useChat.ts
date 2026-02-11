@@ -456,7 +456,7 @@ const useChat = () => {
     // post message
     const postPromise = new Promise<void>((resolve, reject) => {
       if (USE_STREAMING) {
-        const subscription = streamingActor.subscribe(state => {
+        const subscription = streamingActor.subscribe((state: { context: { text: string } }) => {
           editMessage(conversationId, NEW_MESSAGE_ID.ASSISTANT, state.context.text);
         });
         postStreaming({
@@ -538,7 +538,7 @@ const useChat = () => {
     const currentMessage = messages[messages.length - 1];
 
     // WARNING: Non-streaming is not supported from the UI side as it is planned to be DEPRICATED.
-    const subscription = streamingActor.subscribe(state => {
+    const subscription = streamingActor.subscribe((state: { context: { text: string } }) => {
       editMessage(conversationId, currentMessage.id, currentContentBody + state.context.text);
     });
     postStreaming({
@@ -640,7 +640,7 @@ const useChat = () => {
 
     setCurrentMessageId(NEW_MESSAGE_ID.ASSISTANT);
 
-    const subscription = streamingActor.subscribe(state => {
+    const subscription = streamingActor.subscribe((state: { context: { text: string } }) => {
       editMessage(conversationId, NEW_MESSAGE_ID.ASSISTANT, state.context.text);
     });
     postStreaming({

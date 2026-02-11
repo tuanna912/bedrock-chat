@@ -28,14 +28,25 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message
 
+# CloudWatch logging is automatically configured for Lambda
+# No need for custom logging setup in Lambda environment
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    force=True,  # Ensure INFO-level handlers apply even when Lambda preconfigures logging
+)
+
+# Explicitly set log level for memory compression modules
+for logger_name in ['app.usecases.chat', 'app.repositories.conversation']:
+    logging.getLogger(logger_name).setLevel(logging.INFO)
 
 CORS_ALLOW_ORIGINS = os.environ.get("CORS_ALLOW_ORIGINS", "*")
 PUBLISHED_API_ID = os.environ.get("PUBLISHED_API_ID", None)
 
 is_published_api = PUBLISHED_API_ID is not None
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s - %(message)s")
 logger = logging.getLogger(__name__)
+logger.info("[APP] Application starting...")
 
 if not is_published_api:
     openapi_tags = [

@@ -22,6 +22,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { IBucket } from "aws-cdk-lib/aws-s3";
 import * as codebuild from "aws-cdk-lib/aws-codebuild";
+import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import { UsageAnalysis } from "./usage-analysis";
 import { excludeDockerImage } from "../constants/docker";
 import { PythonFunction } from "@aws-cdk/aws-lambda-python-alpha";
@@ -38,11 +39,17 @@ export interface ApiProps {
   readonly largeMessageBucket: IBucket;
   readonly apiPublishProject: codebuild.IProject;
   readonly bedrockCustomBotProject: codebuild.IProject;
+  readonly bedrockSharedKnowledgeBasesProject: codebuild.IProject;
+  readonly embeddingStateMachine: sfn.IStateMachine;
   readonly usageAnalysis?: UsageAnalysis;
+  readonly enableBedrockGlobalInference: boolean;
   readonly enableBedrockCrossRegionInference: boolean;
   readonly enableLambdaSnapStart: boolean;
   readonly openSearchEndpoint?: string;
   readonly globalAvailableModels?: string[];
+  readonly defaultModel?: string;
+  readonly titleModel?: string;
+  readonly logoPath?: string;
 }
 
 export class Api extends Construct {
@@ -85,9 +92,11 @@ export class Api extends Construct {
         resources: [
           props.apiPublishProject.projectArn,
           props.bedrockCustomBotProject.projectArn,
+          props.bedrockSharedKnowledgeBasesProject.projectArn,
         ],
       })
     );
+    props.embeddingStateMachine.grantStartExecution(handlerRole);
     handlerRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -108,6 +117,7 @@ export class Api extends Construct {
         resources: [
           props.apiPublishProject.projectArn,
           props.bedrockCustomBotProject.projectArn,
+          props.bedrockSharedKnowledgeBasesProject.projectArn,
         ],
       })
     );
@@ -254,20 +264,25 @@ export class Api extends Construct {
         DOCUMENT_BUCKET: props.documentBucket.bucketName,
         LARGE_MESSAGE_BUCKET: props.largeMessageBucket.bucketName,
         PUBLISH_API_CODEBUILD_PROJECT_NAME: props.apiPublishProject.projectName,
-        // KNOWLEDGE_BASE_CODEBUILD_PROJECT_NAME:
-        //   props.bedrockCustomBotProject.projectName,
+        EMBEDDING_STATE_MACHINE_ARN: props.embeddingStateMachine.stateMachineArn,
         USAGE_ANALYSIS_DATABASE:
           props.usageAnalysis?.database.databaseName || "",
         USAGE_ANALYSIS_TABLE:
           props.usageAnalysis?.ddbExportTable.tableName || "",
         USAGE_ANALYSIS_WORKGROUP: props.usageAnalysis?.workgroupName || "",
         USAGE_ANALYSIS_OUTPUT_LOCATION: usageAnalysisOutputLocation,
+        ENABLE_BEDROCK_GLOBAL_INFERENCE:
+          props.enableBedrockGlobalInference.toString(),
         ENABLE_BEDROCK_CROSS_REGION_INFERENCE:
           props.enableBedrockCrossRegionInference.toString(),
         GLOBAL_AVAILABLE_MODELS: props.globalAvailableModels 
           ? JSON.stringify(props.globalAvailableModels)
           : "[]",
+        DEFAULT_MODEL: props.defaultModel || "",
+        TITLE_MODEL: props.titleModel || "",
         OPENSEARCH_DOMAIN_ENDPOINT: props.openSearchEndpoint || "",
+        LOGO_PATH: props.logoPath || "",
+        USE_STRANDS: "true",
         AWS_LAMBDA_EXEC_WRAPPER: "/opt/bootstrap",
         PORT: "8000",
       },

@@ -32,6 +32,7 @@ const BaseParametersSchema = z.object({
 
   // Bedrock configuration
   bedrockRegion: z.string().default("us-east-1"),
+  enableBedrockGlobalInference: z.boolean().default(true),
   enableBedrockCrossRegionInference: z.boolean().default(true),
 });
 
@@ -114,6 +115,16 @@ const BedrockChatParametersSchema = BaseParametersSchema.extend({
   // If not configured (empty array), all models are available
   globalAvailableModels: z.array(z.string()).default([]),
 
+  // Default model to be selected when user first visits the app
+  defaultModel: z.string().optional(),
+
+  // Model used for generating conversation titles
+  // (defaults to defaultModel, then a hardcoded default in get_title_model())
+  titleModel: z.string().optional(),
+
+  // Frontend branding
+  logoPath: z.string().default(""),
+
   // debug parameter
   devAccessIamRoleArn: z.string().default("")
 });
@@ -146,12 +157,26 @@ const ApiPublishParametersSchema = BaseParametersSchema.extend({
  */
 const BedrockCustomBotParametersSchema = BaseParametersSchema.extend({
   // Bot configuration
-  pk: z.string(),
-  sk: z.string(),
+  ownerUserId: z.string(),
+  botId: z.string(),
   documentBucketName: z.string(),
   knowledge: z.string(),
   knowledgeBase: z.string(),
   guardrails: z.string(),
+  enableRagReplicas: z
+    .string()
+    .optional()
+    .transform((val) => val === "true")
+    .default("false"),
+});
+
+/**
+ * Parameters schema for shared Knowledge Bases
+ */
+const BedrockSharedKnowledgeBasesParametersSchema = BaseParametersSchema.extend({
+  // Knowledge Base configuration
+  sharedKnowledgeBases: z.string(),
+  documentBucketName: z.string(),
   enableRagReplicas: z
     .string()
     .optional()
@@ -173,6 +198,9 @@ export type ApiPublishParametersInput = z.input<
 export type BedrockCustomBotParametersInput = z.input<
   typeof BedrockCustomBotParametersSchema
 >;
+export type BedrockSharedKnowledgeBasesarametersInput = z.input<
+  typeof BedrockCustomBotParametersSchema
+>;
 
 // Output types (for function returns, all properties are required)
 export type BaseParameters = z.infer<typeof BaseParametersSchema>;
@@ -180,6 +208,9 @@ export type BedrockChatParameters = z.infer<typeof BedrockChatParametersSchema>;
 export type ApiPublishParameters = z.infer<typeof ApiPublishParametersSchema>;
 export type BedrockCustomBotParameters = z.infer<
   typeof BedrockCustomBotParametersSchema
+>;
+export type BedrockSharedKnowledgeBasesParameters = z.infer<
+  typeof BedrockSharedKnowledgeBasesParametersSchema
 >;
 
 /**
@@ -232,6 +263,9 @@ export function resolveBedrockChatParameters(
       "publishedApiAllowedIpV6AddressRanges"
     ),
     enableRagReplicas: app.node.tryGetContext("enableRagReplicas"),
+    enableBedrockGlobalInference: app.node.tryGetContext(
+      "enableBedrockGlobalInference"
+    ),
     enableBedrockCrossRegionInference: app.node.tryGetContext(
       "enableBedrockCrossRegionInference"
     ),
@@ -242,6 +276,9 @@ export function resolveBedrockChatParameters(
     enableBotStoreReplicas: app.node.tryGetContext("EnableBotStoreReplicas"),
     botStoreLanguage: app.node.tryGetContext("botStoreLanguage"),
     globalAvailableModels: app.node.tryGetContext("globalAvailableModels"),
+    defaultModel: app.node.tryGetContext("defaultModel"),
+    titleModel: app.node.tryGetContext("titleModel"),
+    logoPath: app.node.tryGetContext("logoPath"),
     devAccessIamRoleArn: app.node.tryGetContext("devAccessIamRoleArn"),
   };
 
@@ -303,6 +340,9 @@ export function resolveApiPublishParameters(): ApiPublishParameters {
     envName: getEnvVar("ENV_NAME"),
     envPrefix: getEnvVar("ENV_PREFIX"),
     bedrockRegion: getEnvVar("BEDROCK_REGION"),
+    enableBedrockGlobalInference: getEnvVar(
+      "ENABLE_BEDROCK_GLOBAL_INFERENCE"
+    ),
     enableBedrockCrossRegionInference: getEnvVar(
       "ENABLE_BEDROCK_CROSS_REGION_INFERENCE"
     ),
@@ -333,14 +373,33 @@ export function resolveBedrockCustomBotParameters(): BedrockCustomBotParameters 
     envName: getEnvVar("ENV_NAME"),
     envPrefix: getEnvVar("ENV_PREFIX"),
     bedrockRegion: getEnvVar("BEDROCK_REGION"),
-    pk: getEnvVar("PK"),
-    sk: getEnvVar("SK"),
+    ownerUserId: getEnvVar("OWNER_USER_ID"),
+    botId: getEnvVar("BOT_ID"),
     documentBucketName: getEnvVar("BEDROCK_CLAUDE_CHAT_DOCUMENT_BUCKET_NAME"),
     knowledge: getEnvVar("KNOWLEDGE"),
-    knowledgeBase: getEnvVar("BEDROCK_KNOWLEDGE_BASE"),
-    guardrails: getEnvVar("BEDROCK_GUARDRAILS"),
+    knowledgeBase: getEnvVar("KNOWLEDGE_BASE"),
+    guardrails: getEnvVar("GUARDRAILS"),
     enableRagReplicas: getEnvVar("ENABLE_RAG_REPLICAS"),
   };
 
   return BedrockCustomBotParametersSchema.parse(envVars);
+}
+
+/**
+ * Parse and validate parameters for shared Knowledge Bases.
+ * This function is executed by CDK in CodeBuild launched via the API.
+ * Therefore, this is not intend to be set values using cdk.json or parameter.ts.
+ * @returns Validated parameters object from environment variables
+ */
+export function resolveBedrockSharedKnowledgeBasesParameters(): BedrockSharedKnowledgeBasesParameters {
+  const envVars = {
+    envName: getEnvVar("ENV_NAME"),
+    envPrefix: getEnvVar("ENV_PREFIX"),
+    bedrockRegion: getEnvVar("BEDROCK_REGION"),
+    sharedKnowledgeBases: getEnvVar("SHARED_KNOWLEDGE_BASES"),
+    documentBucketName: getEnvVar("BEDROCK_CLAUDE_CHAT_DOCUMENT_BUCKET_NAME"),
+    enableRagReplicas: getEnvVar("ENABLE_RAG_REPLICAS"),
+  };
+
+  return BedrockSharedKnowledgeBasesParametersSchema.parse(envVars);
 }

@@ -8,6 +8,7 @@ const translation = {
     app: {
       name: 'Chat Bedrock',
       inputMessage: 'Enviar un mensaje',
+      pinnedBots: 'Bots Fijados',
       starredBots: 'Bots Favoritos',
       recentlyUsedBots: 'Bots Usados Recientemente',
       conversationHistory: 'Historial',
@@ -39,6 +40,11 @@ const translation = {
         label: 'Claude 4.1 (Opus)',
         description:
           'La versión más reciente del modelo Claude más potente con capacidades de razonamiento mejoradas.',
+      },
+      'claude-v4.5-opus': {
+        label: 'Claude 4.5 (Opus)',
+        description:
+          'Nuestro modelo más inteligente que combina capacidad máxima con rendimiento práctico.',
       },
       'claude-v3-opus': {
         label: 'Claude 3 (Opus)',

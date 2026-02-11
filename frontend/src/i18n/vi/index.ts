@@ -8,6 +8,7 @@ const translation = {
     app: {
       name: 'Juno Chat',
       inputMessage: 'Tôi có thể giúp gì cho bạn?',
+      pinnedBots: 'Bot Ghim',
       starredBots: 'Bot Yêu Thích',
       recentlyUsedBots: 'Bot Đã Dùng Gần Đây',
       conversationHistory: 'Lịch sử',
@@ -39,6 +40,11 @@ const translation = {
         label: 'Claude 4.1 (Opus)',
         description:
           'Phiên bản mới nhất của mô hình Claude mạnh nhất với khả năng lý luận được cải thiện.',
+      },
+      'claude-v4.5-opus': {
+        label: 'Claude 4.5 (Opus)',
+        description:
+          'The most intelligent model combining maximum capability with practical performance. Features a more accessible price point than previous Opus models.',
       },
       'claude-v3-opus': {
         label: 'Claude 3 (Opus)',
@@ -806,11 +812,11 @@ Bạn sẽ phân loại email này như thế nào?`,
         hint: 'Dùng chính sách này để xác thực xem phản hồi mô hình có căn cứ vào nguồn tham chiếu và liên quan đến truy vấn người dùng hay không, nhằm lọc bỏ thông tin "hallucination" của mô hình.',
         groundingThreshold: {
           label: 'Căn cứ',
-          hint: 'Xác nhận xem phản hồi mô hình có căn cứ và chính xác dựa trên thông tin trong nguồn tham chiếu hay không, và chặn phản hồi dưới ngưỡng căn cứ đã định. 0: không chặn, 0.99: chặn gần như tất cả',
+          hint: 'Xác nhận xem phản hồi mô hình có căn cứ và chính xác dựa trên thông tin trong nguồn tham chiếu hay không, và chặn phản hồi dưới ngưỡng căn cứ đã định. 0: không chặn, 1: chặn gần như tất cả',
         },
         relevanceThreshold: {
           label: 'Mức liên quan',
-          hint: 'Xác nhận xem phản hồi mô hình có liên quan đến truy vấn người dùng không, và chặn phản hồi dưới ngưỡng liên quan đã định. 0: không chặn, 0.99: chặn gần như tất cả',
+          hint: 'Xác nhận xem phản hồi mô hình có liên quan đến truy vấn người dùng không, và chặn phản hồi dưới ngưỡng liên quan đã định. 0: không chặn, 1: chặn gần như tất cả',
         },
       },
     },

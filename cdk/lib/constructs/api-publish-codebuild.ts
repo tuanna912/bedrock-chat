@@ -38,11 +38,11 @@ export class ApiPublishCodebuild extends Construct {
         BEDROCK_REGION: { value: props.bedrockRegion },
       },
       buildSpec: codebuild.BuildSpec.fromObject({
-        version: "0.2",
+        version: 0.2,
         phases: {
           install: {
             "runtime-versions": {
-              nodejs: "18",
+              nodejs: 22,
             },
             "on-failure": "ABORT",
           },

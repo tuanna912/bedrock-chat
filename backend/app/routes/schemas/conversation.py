@@ -8,8 +8,10 @@ from pydantic import Discriminator, Field, JsonValue, root_validator
 type_model_name = Literal[
     "claude-v4-opus",
     "claude-v4.1-opus",
+    "claude-v4.5-opus",
     "claude-v4-sonnet",
     "claude-v4.5-sonnet",
+    "claude-v4.5-haiku",
     "claude-v3.5-sonnet",
     "claude-v3.5-sonnet-v2",
     "claude-v3.7-sonnet",

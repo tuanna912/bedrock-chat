@@ -27,7 +27,7 @@ DEFAULT_GENERATION_CONFIG: GenerationParams = {
     "top_k": 250,
     "top_p": 0.999,
     "temperature": 1.0,
-    "stop_sequences": ["Human: ", "Assistant: "],
+    "stop_sequences": [],
     # Budget tokens must NOT exceeds max_tokens
     "reasoning_params": {"budget_tokens": 1024},
 }
@@ -86,6 +86,12 @@ BEDROCK_PRICING = {
             "output": 0.015,
             "cache_write_input": 0.00375,
             "cache_read_input": 0.0003,
+        },
+        "claude-v4.5-haiku": {
+            "input": 0.001,
+            "output": 0.005,
+            "cache_write_input": 0.00125,
+            "cache_read_input": 0.0001,
         },
         "claude-v3-haiku": {"input": 0.00025, "output": 0.00125},
         "claude-v3.5-haiku": {
@@ -166,6 +172,12 @@ BEDROCK_PRICING = {
             "cache_write_input": 0.00375,
             "cache_read_input": 0.0003,
         },
+        "claude-v4.5-haiku": {
+            "input": 0.001,
+            "output": 0.005,
+            "cache_write_input": 0.00125,
+            "cache_read_input": 0.0001,
+        },
         "claude-v3.7-sonnet": {
             "input": 0.00300,
             "output": 0.01500,
@@ -220,6 +232,12 @@ BEDROCK_PRICING = {
             "cache_write_input": 0.01875,
             "cache_read_input": 0.0015,
         },
+        "claude-v4.5-opus": {
+            "input": 0.005,
+            "output": 0.025,
+            "cache_write_input": 0.00625,
+            "cache_read_input": 0.0005,
+        },
         "claude-v4-sonnet": {
             "input": 0.003,
             "output": 0.015,
@@ -231,6 +249,12 @@ BEDROCK_PRICING = {
             "output": 0.015,
             "cache_write_input": 0.00375,
             "cache_read_input": 0.0003,
+        },
+        "claude-v4.5-haiku": {
+            "input": 0.001,
+            "output": 0.005,
+            "cache_write_input": 0.00125,
+            "cache_read_input": 0.0001,
         },
         "claude-v3-haiku": {"input": 0.00025, "output": 0.00125},
         "claude-v3.5-haiku": {
