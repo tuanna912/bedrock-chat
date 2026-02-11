@@ -2,10 +2,14 @@ import json
 import logging
 import os
 
+from app.routes.schemas.conversation import type_model_name
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 GLOBAL_AVAILABLE_MODELS = os.environ.get("GLOBAL_AVAILABLE_MODELS")
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL")
+TITLE_MODEL = os.environ.get("TITLE_MODEL")
 LOGO_PATH = os.environ.get("LOGO_PATH", "")
 
 
@@ -37,6 +41,19 @@ def get_global_available_models() -> list[str]:
 
     logger.info("No global available models configured - all models are available")
     return []
+
+
+def get_default_model() -> type_model_name:
+    """Return the configured default model, falling back to claude-v3.7-sonnet."""
+    return (DEFAULT_MODEL or "").strip() or "claude-v3.7-sonnet"  # type: ignore[return-value]
+
+
+def get_title_model() -> type_model_name:
+    """Return the model for title generation.
+
+    Falls back to: TITLE_MODEL -> DEFAULT_MODEL -> claude-v3-haiku
+    """
+    return (TITLE_MODEL or "").strip() or (DEFAULT_MODEL or "").strip() or "claude-v3-haiku"  # type: ignore[return-value]
 
 
 def get_logo_path() -> str:
